@@ -1,0 +1,26 @@
+# docker-compose.yml
+version: "3.8"
+
+services:
+  judge0-server:
+    image: judge0/judge0:1.13.0
+    volumes:
+      - ./judge0.conf:/judge0.conf:ro
+    ports:
+      - "2358:2358"
+    privileged: true
+    restart: always
+
+  judge0-db:
+    image: postgres:13-alpine
+    env_file: judge0.conf
+    volumes:
+      - judge0-db-data:/var/lib/postgresql/data/
+    restart: always
+
+  judge0-redis:
+    image: redis:6-alpine
+    restart: always
+
+volumes:
+  judge0-db-data:

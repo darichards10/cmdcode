@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cmdcode"
+version = "0.1.0"
+description = "Terminal-first coding practice platform"
+authors = [{name = "Drew Richards", email = "Drew10Richards@outlook.com"}]
+dependencies = [
+    "typer[all]",
+    "rich"
+]
+
+[project.scripts]
+cmdcode = "cmdcode.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]

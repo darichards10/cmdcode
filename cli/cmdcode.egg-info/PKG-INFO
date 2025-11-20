@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: cmdcode
+Version: 0.1.0
+Summary: Terminal-first coding practice platform
+Author-email: Drew Richards <Drew10Richards@outlook.com>
+Requires-Dist: typer[all]
+Requires-Dist: rich
