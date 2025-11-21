@@ -1,26 +1,32 @@
-# docker-compose.yml
-version: "3.8"
-
 services:
+  judge0-db:
+    image: postgres:16.2
+    env_file: judge0.conf
+    volumes:
+      - data:/var/lib/postgresql/data/
+
+  judge0-redis:
+    image: redis:7.2.4
+    command: [
+      "bash", "-c",
+      'docker-entrypoint.sh --appendonly no --requirepass "$$REDIS_PASSWORD"'
+    ]
+    env_file: judge0.conf
+
   judge0-server:
-    image: judge0/judge0:1.13.0
+    image: judge0/judge0:latest
     volumes:
       - ./judge0.conf:/judge0.conf:ro
     ports:
       - "2358:2358"
     privileged: true
-    restart: always
 
-  judge0-db:
-    image: postgres:13-alpine
-    env_file: judge0.conf
+  judge0-worker:
+    image: judge0/judge0:latest
+    command: ["./scripts/workers"]
     volumes:
-      - judge0-db-data:/var/lib/postgresql/data/
-    restart: always
-
-  judge0-redis:
-    image: redis:6-alpine
-    restart: always
+      - ./judge0.conf:/judge0.conf:ro
+    privileged: true
 
 volumes:
-  judge0-db-data:
+  data:
