@@ -1,0 +1,7 @@
+# Configuration folder (may be conf/, config/, judge0/conf/, etc.)
+**/*.conf
+
+# Environment files – root or nested
+**/.env
+
+**/*.egg-info
