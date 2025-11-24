@@ -4,8 +4,12 @@ from pydantic import BaseModel
 from typing import List, Dict
 from datetime import datetime
 import uvicorn
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 app = FastAPI(title="cmdcode Server", description="Your personal coding judge")
+APP_PORT = int(os.getenv("APP_PORT", 8000))
 
 class TestCase(BaseModel):
     input: str
@@ -40,7 +44,7 @@ PROBLEMS_DB = {
     1: Problem(
         id=1,
         title="Hello World",
-        description="Write a C++ program that prints 'Hello, World!' exactly.",
+        description="Write a program that prints 'Hello, World!' exactly.",
         difficulty="Easy",
         test_cases=[
             TestCase(input="", output="Hello, World!\n", hidden=False),
@@ -90,22 +94,5 @@ async def submit_solution(problem_id: int, file: UploadFile = File(...)):
     submission_counter += 1
     return submission
 
-    print("\n" + "═" * 82)
-    print(f"        SUBMISSION #{submission.submission_id} RECEIVED & LOGGED")
-    print("═" * 82)
-    print(f"  ID           : {submission.submission_id}")
-    print(f"  Problem      : {submission.problem_id}")
-    print(f"  File         : {submission.filename}")
-    print(f"  Language     : C++")
-    print(f"  Submitted    : {submission.submitted_at}")
-    print(f"  Size         : {submission.size_bytes} bytes")
-    print(f"  Status       : {submission.status.upper()}")
-    print("─" * 82)
-    print(submission.code.rstrip())
-    print("═" * 82 + "\n")
-    return submission
-  
 if __name__ == "__main__":
-    print("Starting cmdcode server at http://localhost:8000")
-    print("Try: curl http://localhost:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=APP_PORT)
