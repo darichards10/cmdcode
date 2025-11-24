@@ -1,9 +1,0 @@
-README.md
-cli.py
-pyproject.toml
-cmdcode.egg-info/PKG-INFO
-cmdcode.egg-info/SOURCES.txt
-cmdcode.egg-info/dependency_links.txt
-cmdcode.egg-info/entry_points.txt
-cmdcode.egg-info/requires.txt
-cmdcode.egg-info/top_level.txt
