@@ -162,7 +162,7 @@ AUTHN_HEADER=
 
 # Specify valid authentication tokens.
 # Default: empty - authentication is disabled
-AUTHN_TOKEN=token1234
+AUTHN_TOKEN=
 
 
 ################################################################################
@@ -184,7 +184,7 @@ AUTHZ_HEADER=
 
 # Specify valid authorization tokens.
 # Default: empty - authorization is disabled, protected API calls cannot be issued
-AUTHZ_TOKEN=token12345
+AUTHZ_TOKEN=
 
 
 ################################################################################
@@ -192,7 +192,7 @@ AUTHZ_TOKEN=token12345
 ################################################################################
 # Specify Redis host.
 # Default: localhost
-REDIS_HOST=judge0-redis
+REDIS_HOST=
 
 # Specify Redis port.
 # Default: 6379
@@ -200,7 +200,7 @@ REDIS_PORT=
 
 # Specify Redis password. Cannot be blank.
 # Default: NO DEFAULT! MUST BE SET!
-REDIS_PASSWORD=password123
+REDIS_PASSWORD=
 
 # Specify Resque namespace.
 # Default: Resque's default namespace
@@ -214,7 +214,7 @@ RESQUE_NAMESPACE=
 ################################################################################
 # Specify Postgres host.
 # Default: localhost
-POSTGRES_HOST=judge0-db
+POSTGRES_HOST=
 
 # Specify Postgres port.
 # Default: 5432
@@ -222,15 +222,15 @@ POSTGRES_PORT=
 
 # Name of the database to use. Used only in production.
 # Default: postgres
-POSTGRES_DB=judge0
+POSTGRES_DB=
 
 # User who can access this database. Used only in production.
 # Default: postgres
-POSTGRES_USER=judge0
+POSTGRES_USER=
 
 # Password of the user. Cannot be blank. Used only in production.
 # Default: NO DEFAULT, YOU MUST SET YOUR PASSWORD
-POSTGRES_PASSWORD=password123
+POSTGRES_PASSWORD=
 
 
 ################################################################################
