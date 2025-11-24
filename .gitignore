@@ -1,67 +1,7 @@
-# Judge0 core files you never want to commit
-conf/
-.env
-.env.local
-.env.*      # any custom env files
+# Configuration folder (may be conf/, config/, judge0/conf/, etc.)
+**/.conf
 
-# Database & Redis volumes (Docker creates these)
-db/
-redis/
+# Environment files – root or nested
+**/.env
 
-# Docker generated stuff
-docker-compose.override.yml
-
-# Python (if you ever run local scripts or the judge0-cli)
-__pycache__/
-*.py[cod]
-*$py.class
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.pytest_cache/
-htmlcov/
-.mypy_cache/
-.dmypy.json
-.dmypy.json
-
-# Python packaging
-*.egg-info/
-dist/
-build/
-*.egg
-.eggs/
-.installed.cfg
-*.manifest
-*.spec
-
-# Node / npm (if you ever use judge0-ide or frontend)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# OS / Editor junk
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.swp
-*~
-
-# Logs and temp files
-*.log
-tmp/
-temp/
+**/*.egg-info
