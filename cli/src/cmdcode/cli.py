@@ -1,3 +1,4 @@
+import base64
 import typer
 from rich.console import Console
 from rich.panel import Panel
@@ -14,7 +15,7 @@ app = typer.Typer(
 )
 console = Console()
 
-SERVER_URL = "http://127.0.0.1:8000"
+SERVER_URL = "http://98.81.154.236:8000"
 
 @app.command()
 def get(problem_id: int):
@@ -76,24 +77,34 @@ def submit(
         console.print(f"[red]File not found:[/red] {file}")
         return
 
+    # Read raw bytes → base64 encode → send as "file" content
+    raw_bytes = path.read_bytes()
+    encoded_content = base64.b64encode(raw_bytes).decode("utf-8")
+    files = {
+        "file": (
+            path.name,                              # original filename
+            encoded_content,                        # base64 string
+            "text/plain;base64"                     # magic MIME type
+        )
+    }
+    
     try:
+        
         with open(file, "rb") as f:
-            files = {"file": (file, f, "text/cpp")}
             console.print(f"[bold blue]Submitting[/bold blue] [cyan]{file}[/] → Problem [magenta]{problem_id}[/]")
             with console.status("[bold green]Creating submission object...[/bold green]"):
                 resp = requests.post(f"{SERVER_URL}/submit/{problem_id}", files=files, timeout=10)
-
+        
         if resp.status_code == 200:
             result = resp.json()
             console.print(Panel(
-               # f"Problem: {result['problem_id']}\n"
-                f"Submission: {result['submission_id']}\n"
+                f"Problem: {result['problem_id']}\n"
                 f"File: {result['filename']}\n"
                 f"Time: {result['submitted_at']}\n"
                 f"Size: {result['size_bytes']} bytes\n"
                 f"Passed: {result['passed']}",
                 title="Submission Logged",
-                border_style="bright_green"
+                border_style="bright_green" if result["passed"] else "red"
             ))
         else:
             console.print(f"[red]Server error: {resp.status_code}[/red]")
