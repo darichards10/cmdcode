@@ -1,19 +1,40 @@
-[build-system]
-requires = ["setuptools>=45", "wheel"]
-build-backend = "setuptools.build_meta"
-
+# pyproject.toml
 [project]
 name = "cmdcode"
-version = "0.1.0"
+version = "0.1.1"
 description = "Terminal-first coding practice platform"
-authors = [{name = "Drew Richards", email = "Drew10Richards@outlook.com"}]
+authors = [{ name = "Drew Richards", email = "Drewwerd10@gmail.com" }]
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["competitive-programming", "cli", "coding-practice"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Environment :: Console",
+]
+
 dependencies = [
     "typer[all]",
-    "rich"
+    "rich",
+    "requests",
+    "pydantic-settings>=2.0"
 ]
 
 [project.scripts]
 cmdcode = "cmdcode.cli:app"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[project.urls]
+Homepage = "https://github.com/darichards10/cmdcode"
+Repository = "https://github.com/darichards10/cmdcode"
+Issues = "https://github.com/darichards10/cmdcode/issues"
+
+# Build system — use hatchling (modern, fast, no warnings)
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# Optional: pretty version string
+[tool.hatch.version]
+path = "cmdcode/cli.py"
