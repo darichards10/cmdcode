@@ -1,3 +1,4 @@
+# Built to be used with docker-compose from root
 # Dockerfile
 FROM python:3.11-slim
 
@@ -12,7 +13,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy your code
-COPY server/main.py .
+COPY main.py .
 
 EXPOSE 8000
 

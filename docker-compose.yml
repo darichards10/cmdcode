@@ -1,0 +1,27 @@
+# docker-compose.yml
+version: "3.9"
+
+services:
+  cmdcode-server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile          # uses your Dockerfile in the root
+    container_name: cmdcode-server
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT}:${APP_PORT}" 
+    volumes:
+      - ./server:/app           
+    environment:
+      - JUDGE0_URL=${JUDGE0_URL}
+      - APP_PORT=${APP_PORT}
+    networks:
+      - judge-net
+    
+
+include:
+  - ./judge/docker-compose.yml
+
+networks:
+  judge-net:
+    driver: bridge
