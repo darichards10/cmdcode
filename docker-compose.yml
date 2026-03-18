@@ -15,6 +15,7 @@ services:
     environment:
       - JUDGE0_URL=${JUDGE0_URL}
       - APP_PORT=${APP_PORT}
+      - DATABASE_URL=sqlite:///./cmdcode.db
     networks:
       - judge-net
     

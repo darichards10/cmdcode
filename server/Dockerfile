@@ -12,8 +12,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy your code
-COPY main.py .
+# Copy application code
+COPY main.py database.py models.py .
 
 EXPOSE 8000
 

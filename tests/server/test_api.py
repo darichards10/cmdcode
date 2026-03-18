@@ -16,14 +16,12 @@ from fastapi.testclient import TestClient
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
-from main import app, PROBLEMS_DB, LANGUAGE_IDS, require_auth, USERS_DB, CHALLENGES_DB, SESSIONS_DB
+from main import app, LANGUAGE_IDS, require_auth
+from models import DBSession, DBUser, DBChallenge
 
-
-# ---------------------------------------------------------------------------
-# Auth bypass for non-auth tests
-# ---------------------------------------------------------------------------
-
+# Auth bypass for all non-auth tests (cleared in TestProtectedRoutes)
 app.dependency_overrides[require_auth] = lambda: "testuser"
+
 client = TestClient(app)
 
 
@@ -70,8 +68,20 @@ def _make_ed25519_keypair():
 
 
 def _sign(private_key, nonce_hex: str) -> str:
-    signature = private_key.sign(bytes.fromhex(nonce_hex))
-    return base64.b64encode(signature).decode()
+    return base64.b64encode(private_key.sign(bytes.fromhex(nonce_hex))).decode()
+
+
+def _register_user(username: str = "testuser", email: str = "t@example.com", private_key=None):
+    """Register a user via the API and return (private_key, pub_pem)."""
+    if private_key is None:
+        private_key, pub_pem = _make_ed25519_keypair()
+    else:
+        pub_pem = private_key.public_key().public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode()
+    client.post("/auth/register", json={"username": username, "email": email, "public_key": pub_pem})
+    return private_key, pub_pem
 
 
 # ---------------------------------------------------------------------------
@@ -125,9 +135,10 @@ class TestGetProblem:
         data = client.get("/problems/9999").json()
         assert "not found" in data["detail"].lower()
 
-    def test_problems_db_contains_seed_data(self):
-        assert 1 in PROBLEMS_DB
-        assert PROBLEMS_DB[1].title == "Hello World"
+    def test_seed_problem_is_accessible(self):
+        """Seed data is loaded into DB on startup and accessible via API."""
+        data = client.get("/problems/1").json()
+        assert data["title"] == "Hello World"
 
 
 # ---------------------------------------------------------------------------
@@ -146,8 +157,7 @@ class TestListProblems:
 
     def test_list_contains_hello_world(self):
         data = client.get("/problems").json()
-        titles = [p["title"] for p in data]
-        assert "Hello World" in titles
+        assert any(p["title"] == "Hello World" for p in data)
 
 
 # ---------------------------------------------------------------------------
@@ -205,15 +215,25 @@ class TestSubmit:
     def test_plain_text_upload(self, MockClient):
         _mock_judge0(MockClient, _judge0_response(3, "Accepted", "Hello, World!"))
         code = '#include <iostream>\nint main() { std::cout << "Hello, World!\\n"; return 0; }\n'
-        resp = client.post("/submit/1", files=make_upload(code, as_base64=False))
-        assert resp.status_code == 200
+        assert client.post("/submit/1", files=make_upload(code, as_base64=False)).status_code == 200
 
     @patch("main.httpx.AsyncClient")
     def test_crlf_normalized_in_submission(self, MockClient):
         _mock_judge0(MockClient, _judge0_response(3, "Accepted", "Hello, World!"))
         crlf_code = '#include <iostream>\r\nint main() { std::cout << "Hello, World!\\n"; return 0; }\r\n'
-        resp = client.post("/submit/1", files=make_upload(crlf_code))
-        assert resp.status_code == 200
+        assert client.post("/submit/1", files=make_upload(crlf_code)).status_code == 200
+
+    @patch("main.httpx.AsyncClient")
+    def test_submission_persisted_to_db(self, MockClient, db_session):
+        """Accepted submissions are written to the submissions table."""
+        from models import DBSubmission
+        _mock_judge0(MockClient, _judge0_response(3, "Accepted", "Hello, World!"))
+        code = '#include <iostream>\nint main() { std::cout << "Hello, World!\\n"; return 0; }\n'
+        client.post("/submit/1", files=make_upload(code))
+        row = db_session.query(DBSubmission).first()
+        assert row is not None
+        assert row.passed is True
+        assert row.problem_id == 1
 
 
 # ---------------------------------------------------------------------------
@@ -221,67 +241,51 @@ class TestSubmit:
 # ---------------------------------------------------------------------------
 
 class TestAuthRegister:
-    def setup_method(self):
-        USERS_DB.clear()
-
     def test_register_success(self):
         _, pub_pem = _make_ed25519_keypair()
         resp = client.post("/auth/register", json={
-            "username": "alice",
-            "email": "alice@example.com",
-            "public_key": pub_pem,
+            "username": "alice", "email": "alice@example.com", "public_key": pub_pem,
         })
         assert resp.status_code == 201
         assert resp.json()["username"] == "alice"
 
-    def test_register_stores_user(self):
+    def test_register_stores_user(self, db_session):
         _, pub_pem = _make_ed25519_keypair()
         client.post("/auth/register", json={
-            "username": "bob",
-            "email": "bob@example.com",
-            "public_key": pub_pem,
+            "username": "bob", "email": "bob@example.com", "public_key": pub_pem,
         })
-        assert "bob" in USERS_DB
-        assert USERS_DB["bob"]["email"] == "bob@example.com"
+        user = db_session.query(DBUser).filter(DBUser.username == "bob").first()
+        assert user is not None
+        assert user.email == "bob@example.com"
 
     def test_register_duplicate_username_returns_409(self):
         _, pub_pem = _make_ed25519_keypair()
         client.post("/auth/register", json={
-            "username": "carol",
-            "email": "carol@example.com",
-            "public_key": pub_pem,
+            "username": "carol", "email": "carol@example.com", "public_key": pub_pem,
         })
         _, pub_pem2 = _make_ed25519_keypair()
         resp = client.post("/auth/register", json={
-            "username": "carol",
-            "email": "carol2@example.com",
-            "public_key": pub_pem2,
+            "username": "carol", "email": "carol2@example.com", "public_key": pub_pem2,
         })
         assert resp.status_code == 409
 
     def test_register_invalid_public_key_returns_422(self):
         resp = client.post("/auth/register", json={
-            "username": "dave",
-            "email": "dave@example.com",
-            "public_key": "not-a-pem-key",
+            "username": "dave", "email": "dave@example.com", "public_key": "not-a-pem-key",
         })
         assert resp.status_code == 422
 
     def test_register_short_username_returns_422(self):
         _, pub_pem = _make_ed25519_keypair()
         resp = client.post("/auth/register", json={
-            "username": "ab",
-            "email": "ab@example.com",
-            "public_key": pub_pem,
+            "username": "ab", "email": "ab@example.com", "public_key": pub_pem,
         })
         assert resp.status_code == 422
 
     def test_register_username_with_special_chars_returns_422(self):
         _, pub_pem = _make_ed25519_keypair()
         resp = client.post("/auth/register", json={
-            "username": "bad user!",
-            "email": "x@example.com",
-            "public_key": pub_pem,
+            "username": "bad user!", "email": "x@example.com", "public_key": pub_pem,
         })
         assert resp.status_code == 422
 
@@ -292,18 +296,10 @@ class TestAuthRegister:
 
 class TestAuthChallenge:
     def setup_method(self):
-        USERS_DB.clear()
-        CHALLENGES_DB.clear()
-        _, pub_pem = _make_ed25519_keypair()
-        USERS_DB["testuser"] = {
-            "username": "testuser",
-            "email": "t@example.com",
-            "public_key_pem": pub_pem,
-        }
+        _register_user("testuser")
 
     def test_challenge_returns_200(self):
-        resp = client.get("/auth/challenge/testuser")
-        assert resp.status_code == 200
+        assert client.get("/auth/challenge/testuser").status_code == 200
 
     def test_challenge_returns_nonce_and_id(self):
         data = client.get("/auth/challenge/testuser").json()
@@ -311,14 +307,12 @@ class TestAuthChallenge:
         assert "nonce" in data
         assert len(data["nonce"]) == 64  # 32 bytes hex
 
-    def test_challenge_stores_in_db(self):
-        resp = client.get("/auth/challenge/testuser")
-        cid = resp.json()["challenge_id"]
-        assert cid in CHALLENGES_DB
+    def test_challenge_stores_in_db(self, db_session):
+        cid = client.get("/auth/challenge/testuser").json()["challenge_id"]
+        assert db_session.query(DBChallenge).filter(DBChallenge.challenge_id == cid).first() is not None
 
     def test_challenge_unknown_user_returns_404(self):
-        resp = client.get("/auth/challenge/nobody")
-        assert resp.status_code == 404
+        assert client.get("/auth/challenge/nobody").status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -327,15 +321,7 @@ class TestAuthChallenge:
 
 class TestAuthVerify:
     def setup_method(self):
-        USERS_DB.clear()
-        CHALLENGES_DB.clear()
-        SESSIONS_DB.clear()
-        self.private_key, pub_pem = _make_ed25519_keypair()
-        USERS_DB["vera"] = {
-            "username": "vera",
-            "email": "vera@example.com",
-            "public_key_pem": pub_pem,
-        }
+        self.private_key, _ = _register_user("vera")
 
     def _get_challenge(self):
         data = client.get("/auth/challenge/vera").json()
@@ -344,66 +330,55 @@ class TestAuthVerify:
     def test_verify_valid_signature_returns_token(self):
         cid, nonce = self._get_challenge()
         resp = client.post("/auth/verify", json={
-            "username": "vera",
-            "challenge_id": cid,
+            "username": "vera", "challenge_id": cid,
             "signature": _sign(self.private_key, nonce),
         })
         assert resp.status_code == 200
         assert "token" in resp.json()
         assert "expires_at" in resp.json()
 
-    def test_verify_stores_session(self):
+    def test_verify_stores_session(self, db_session):
         cid, nonce = self._get_challenge()
         client.post("/auth/verify", json={
-            "username": "vera",
-            "challenge_id": cid,
+            "username": "vera", "challenge_id": cid,
             "signature": _sign(self.private_key, nonce),
         })
-        assert len(SESSIONS_DB) == 1
+        assert db_session.query(DBSession).count() == 1
 
     def test_verify_wrong_signature_returns_401(self):
         cid, nonce = self._get_challenge()
         bad_sig = base64.b64encode(b"\x00" * 64).decode()
-        resp = client.post("/auth/verify", json={
-            "username": "vera",
-            "challenge_id": cid,
-            "signature": bad_sig,
-        })
-        assert resp.status_code == 401
+        assert client.post("/auth/verify", json={
+            "username": "vera", "challenge_id": cid, "signature": bad_sig,
+        }).status_code == 401
 
     def test_verify_replay_rejected(self):
-        """Using the same challenge twice should fail."""
         cid, nonce = self._get_challenge()
         sig = _sign(self.private_key, nonce)
-        client.post("/auth/verify", json={
+        client.post("/auth/verify", json={"username": "vera", "challenge_id": cid, "signature": sig})
+        assert client.post("/auth/verify", json={
             "username": "vera", "challenge_id": cid, "signature": sig,
-        })
-        resp = client.post("/auth/verify", json={
-            "username": "vera", "challenge_id": cid, "signature": sig,
-        })
-        assert resp.status_code == 401
+        }).status_code == 401
 
     def test_verify_unknown_challenge_returns_401(self):
-        resp = client.post("/auth/verify", json={
+        assert client.post("/auth/verify", json={
             "username": "vera",
             "challenge_id": "00000000-0000-0000-0000-000000000000",
             "signature": base64.b64encode(b"\x00" * 64).decode(),
-        })
-        assert resp.status_code == 401
+        }).status_code == 401
 
-    def test_verify_expired_challenge_returns_401(self):
-        from datetime import timedelta, timezone
+    def test_verify_expired_challenge_returns_401(self, db_session):
+        from datetime import timedelta
         cid, nonce = self._get_challenge()
-        # Backdate the challenge
-        CHALLENGES_DB[cid]["expires_at"] = (
-            CHALLENGES_DB[cid]["expires_at"] - timedelta(minutes=5)
-        )
-        resp = client.post("/auth/verify", json={
-            "username": "vera",
-            "challenge_id": cid,
+        # Backdate the challenge in the DB
+        row = db_session.query(DBChallenge).filter(DBChallenge.challenge_id == cid).first()
+        from datetime import datetime, timezone
+        row.expires_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        db_session.commit()
+        assert client.post("/auth/verify", json={
+            "username": "vera", "challenge_id": cid,
             "signature": _sign(self.private_key, nonce),
-        })
-        assert resp.status_code == 401
+        }).status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -420,35 +395,38 @@ class TestProtectedRoutes:
         app.dependency_overrides[require_auth] = lambda: "testuser"
 
     def test_get_problem_without_token_returns_401(self):
-        resp = client.get("/problems/1")
-        assert resp.status_code == 401
+        assert client.get("/problems/1").status_code == 401
 
     def test_list_problems_without_token_returns_401(self):
-        resp = client.get("/problems")
-        assert resp.status_code == 401
+        assert client.get("/problems").status_code == 401
 
     def test_submit_without_token_returns_401(self):
-        resp = client.post("/submit/1", files=make_upload("int main(){}"))
-        assert resp.status_code == 401
+        assert client.post("/submit/1", files=make_upload("int main(){}")).status_code == 401
 
-    def test_get_problem_with_valid_token_returns_200(self):
-        SESSIONS_DB.clear()
+    def test_get_problem_with_valid_token_returns_200(self, db_session):
         from datetime import datetime, timedelta, timezone
         token = "validtoken123"
-        SESSIONS_DB[token] = {
-            "username": "testuser",
-            "expires_at": datetime.now(timezone.utc) + timedelta(hours=1),
-        }
-        resp = client.get("/problems/1", headers={"Authorization": f"Bearer {token}"})
-        assert resp.status_code == 200
+        db_session.add(DBUser(
+            username="tempuser", email="t@t.com",
+            public_key_pem="x", created_at=datetime.now(timezone.utc).isoformat(),
+        ))
+        db_session.add(DBSession(
+            token=token, username="tempuser",
+            expires_at=(datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        ))
+        db_session.commit()
+        assert client.get("/problems/1", headers={"Authorization": f"Bearer {token}"}).status_code == 200
 
-    def test_get_problem_with_expired_token_returns_401(self):
-        SESSIONS_DB.clear()
+    def test_get_problem_with_expired_token_returns_401(self, db_session):
         from datetime import datetime, timedelta, timezone
         token = "expiredtoken"
-        SESSIONS_DB[token] = {
-            "username": "testuser",
-            "expires_at": datetime.now(timezone.utc) - timedelta(hours=1),
-        }
-        resp = client.get("/problems/1", headers={"Authorization": f"Bearer {token}"})
-        assert resp.status_code == 401
+        db_session.add(DBUser(
+            username="tempuser2", email="t2@t.com",
+            public_key_pem="x", created_at=datetime.now(timezone.utc).isoformat(),
+        ))
+        db_session.add(DBSession(
+            token=token, username="tempuser2",
+            expires_at=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+        ))
+        db_session.commit()
+        assert client.get("/problems/1", headers={"Authorization": f"Bearer {token}"}).status_code == 401
