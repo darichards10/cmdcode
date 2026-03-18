@@ -104,7 +104,7 @@ def submit(
     table.add_row("Language", result.get('language', 'cpp'))
     table.add_row("Verdict", f"[{color}]{verdict}[/]")
     table.add_row("Time", result['results'][0].get('time', 'N/A') if result.get('results') else "N/A")
-    table.add_row("Memory", result['results'][0].get('memory', 'N/A') if result.get('results') else "N/A")
+    table.add_row("Memory", str(result['results'][0].get('memory', 'N/A')) if result.get('results') else "N/A")
     table.add_row("Submitted", result['submitted_at'])
 
     console.print(table)
@@ -139,11 +139,13 @@ def version():
     """Show cmdcode version."""
     console.print(f"[bold cyan]cmdcode[/] version [green]v{__version__}[/]")
 
-@app.callback()
-def main(version: bool = typer.Option(False, "--version", "-v")):
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context, version: bool = typer.Option(False, "--version", "-v", is_eager=True)):
     if version:
         console.print(f"[bold cyan]cmdcode[/] v{__version__}")
         raise typer.Exit()
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,11 @@
+# Test dependencies — install with: pip install -r requirements-dev.txt
+pytest>=8.0
+httpx>=0.27          # FastAPI TestClient requires httpx
+typer[all]           # CLI framework (needed for typer.testing.CliRunner)
+rich                 # CLI dependency
+requests             # CLI dependency
+pydantic>=2.0
+fastapi>=0.115
+uvicorn[standard]
+python-dotenv
+python-multipart
