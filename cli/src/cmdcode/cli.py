@@ -1,11 +1,15 @@
 import base64
+import json
 import typer
+from datetime import datetime, timezone
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 from rich.table import Table
 from pathlib import Path
 import requests
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
 
 __version__ = "0.1.0"
 
@@ -21,11 +25,158 @@ console = Console()
 SERVER_URL = "http://98.81.154.236:8000"  # temp home
 
 
+def get_cmdcode_dir() -> Path:
+    d = Path.home() / ".cmdcode"
+    d.mkdir(exist_ok=True)
+    return d
+
+
+def get_auth_token(server_url: str = SERVER_URL) -> str:
+    """Return a valid Bearer token, running challenge-response if needed."""
+    d = get_cmdcode_dir()
+    session_file = d / "session.json"
+    config_file = d / "config.json"
+
+    if session_file.exists():
+        try:
+            session = json.loads(session_file.read_text())
+            expires_at = datetime.fromisoformat(session["expires_at"])
+            if datetime.now(timezone.utc) < expires_at:
+                return session["token"]
+        except Exception:
+            pass
+
+    if not config_file.exists():
+        console.print("[red]Not registered. Run: cmdcode register[/red]")
+        raise typer.Exit(1)
+
+    config = json.loads(config_file.read_text())
+    username = config["username"]
+    private_key_file = d / "id_ed25519"
+
+    if not private_key_file.exists():
+        console.print("[red]Private key not found. Run: cmdcode register[/red]")
+        raise typer.Exit(1)
+
+    try:
+        resp = requests.get(f"{server_url}/auth/challenge/{username}", timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException as e:
+        console.print(f"[red]Auth failed (challenge):[/red] {e}")
+        raise typer.Exit(1)
+
+    challenge_id = data["challenge_id"]
+    nonce = data["nonce"]
+
+    private_key = serialization.load_pem_private_key(
+        private_key_file.read_bytes(), password=None
+    )
+    signature = private_key.sign(bytes.fromhex(nonce))
+    signature_b64 = base64.b64encode(signature).decode()
+
+    try:
+        resp = requests.post(
+            f"{server_url}/auth/verify",
+            json={"username": username, "challenge_id": challenge_id, "signature": signature_b64},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+    except requests.RequestException as e:
+        console.print(f"[red]Auth failed (verify):[/red] {e}")
+        raise typer.Exit(1)
+
+    session_file.write_text(json.dumps({
+        "token": result["token"],
+        "expires_at": result["expires_at"],
+    }))
+    return result["token"]
+
+
+@app.command()
+def register(
+    username: str = typer.Option(None, prompt="Username (alphanumeric, 3-20 chars)"),
+    email: str = typer.Option(None, prompt="Email"),
+):
+    """Register with cmdcode — generates an Ed25519 keypair and stores it in ~/.cmdcode/."""
+    d = get_cmdcode_dir()
+    key_file = d / "id_ed25519"
+
+    if key_file.exists():
+        console.print("[red]Already registered. Key exists at ~/.cmdcode/id_ed25519[/red]")
+        console.print("To re-register, delete ~/.cmdcode/ and run again.")
+        raise typer.Exit(1)
+
+    private_key = Ed25519PrivateKey.generate()
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    public_pem = private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    key_file.write_bytes(private_pem)
+    key_file.chmod(0o600)
+    (d / "id_ed25519.pub").write_bytes(public_pem)
+    (d / "config.json").write_text(json.dumps({
+        "username": username,
+        "email": email,
+        "server_url": SERVER_URL,
+    }))
+
+    try:
+        resp = requests.post(
+            f"{SERVER_URL}/auth/register",
+            json={"username": username, "email": email, "public_key": public_pem.decode()},
+            timeout=10,
+        )
+        resp.raise_for_status()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            pass
+        console.print(f"[red]Registration failed:[/red] {detail or e}")
+        raise typer.Exit(1)
+    except requests.RequestException as e:
+        console.print(f"[red]Could not reach server:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.print(f"\n[bold green]Registered![/bold green] Welcome, [cyan]{username}[/cyan]")
+    console.print(f"   Keys saved to [dim]~/.cmdcode/[/dim]")
+    console.print(f"   [dim]~/.cmdcode/id_ed25519[/dim]     private key")
+    console.print(f"   [dim]~/.cmdcode/id_ed25519.pub[/dim] public key")
+
+
+@app.command()
+def whoami():
+    """Show your registered username and key info."""
+    d = get_cmdcode_dir()
+    config_file = d / "config.json"
+    if not config_file.exists():
+        console.print("[yellow]Not registered. Run: cmdcode register[/yellow]")
+        raise typer.Exit(1)
+    config = json.loads(config_file.read_text())
+    console.print(f"[bold cyan]Username:[/bold cyan] {config['username']}")
+    console.print(f"[bold cyan]Email:[/bold cyan]    {config['email']}")
+    console.print(f"[bold cyan]Keys:[/bold cyan]     ~/.cmdcode/id_ed25519")
+
+
 @app.command()
 def get(problem_id: int):
     """Download a problem and create a ready-to-code folder."""
     try:
-        resp = requests.get(f"{SERVER_URL}/problems/{problem_id}", timeout=10)
+        token = get_auth_token()
+        resp = requests.get(
+            f"{SERVER_URL}/problems/{problem_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
         resp.raise_for_status()
         data = resp.json()
 
@@ -82,9 +233,15 @@ def submit(
 
     console.print(f"[bold blue]Submitting[/bold blue] [cyan]{path.name}[/] → Problem [magenta]#{problem_id}[/]")
     
+    token = get_auth_token()
     with console.status("[bold green]Waiting for judge...[/bold green]"):
         try:
-            resp = requests.post(f"{SERVER_URL}/submit/{problem_id}", files=files, timeout=30)
+            resp = requests.post(
+                f"{SERVER_URL}/submit/{problem_id}",
+                files=files,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
             resp.raise_for_status()
             result = resp.json()
         except requests.exceptions.RequestException as e:
@@ -115,7 +272,11 @@ def submit(
 def list():
     """List all available problems on the server."""
     try:
-        resp = requests.get(f"{SERVER_URL}/problems")
+        token = get_auth_token()
+        resp = requests.get(
+            f"{SERVER_URL}/problems",
+            headers={"Authorization": f"Bearer {token}"},
+        )
         resp.raise_for_status()
         problems = resp.json()
 

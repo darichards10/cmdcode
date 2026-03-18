@@ -9,3 +9,5 @@ fastapi>=0.115
 uvicorn[standard]
 python-dotenv
 python-multipart
+cryptography>=41.0
+sqlalchemy>=2.0
