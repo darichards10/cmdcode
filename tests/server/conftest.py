@@ -10,8 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from database import Base, get_db
-from main import app, SEED_PROBLEMS, _register_ip_counts
-from models import DBProblem
+from main import app, _seed_problems, _register_ip_counts
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
 # StaticPool makes all sessions share one connection so in-memory data is visible everywhere
@@ -40,10 +39,7 @@ def reset_db():
     # Seed problems
     db = TestSessionLocal()
     try:
-        if db.query(DBProblem).count() == 0:
-            for p in SEED_PROBLEMS:
-                db.add(DBProblem(**p))
-            db.commit()
+        _seed_problems(db)
     finally:
         db.close()
     yield

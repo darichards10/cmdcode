@@ -159,6 +159,24 @@ class TestListProblems:
         data = client.get("/problems").json()
         assert any(p["title"] == "Hello World" for p in data)
 
+    def test_list_contains_multiple_problems(self):
+        data = client.get("/problems").json()
+        assert len(data) >= 8
+
+    def test_list_has_mixed_difficulties(self):
+        data = client.get("/problems").json()
+        difficulties = {p["difficulty"] for p in data}
+        assert "Easy" in difficulties
+        assert "Medium" in difficulties
+
+    def test_upsert_does_not_duplicate_on_restart(self, db_session):
+        """Seeding twice should not create duplicate problems."""
+        from main import _seed_problems
+        before = client.get("/problems").json()
+        _seed_problems(db_session)
+        after = client.get("/problems").json()
+        assert len(before) == len(after)
+
 
 # ---------------------------------------------------------------------------
 # POST /submit/{problem_id}

@@ -1,0 +1,137 @@
+[
+  {
+    "id": 1,
+    "title": "Hello World",
+    "description": "Write a program that prints 'Hello, World!' exactly (with the comma, exclamation mark, and a newline at the end).",
+    "difficulty": "Easy",
+    "test_cases": [
+      {"input": "", "output": "Hello, World!\n", "hidden": false},
+      {"input": "", "output": "Hello, World!\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\nint main() {\n    // Your code here\n    return 0;\n}",
+      "python": "# Your code here",
+      "java": "public class Solution {\n    public static void main(String[] args) {\n        // Your code here\n    }\n}"
+    }
+  },
+  {
+    "id": 2,
+    "title": "Sum Two Numbers",
+    "description": "Read two integers from a single line of stdin and print their sum.\n\nExample:\nInput: 3 5\nOutput: 8",
+    "difficulty": "Easy",
+    "test_cases": [
+      {"input": "3 5\n", "output": "8\n", "hidden": false},
+      {"input": "0 0\n", "output": "0\n", "hidden": false},
+      {"input": "-4 7\n", "output": "3\n", "hidden": true},
+      {"input": "1000000 999999\n", "output": "1999999\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\nint main() {\n    int a, b;\n    std::cin >> a >> b;\n    // Your code here\n    return 0;\n}",
+      "python": "a, b = map(int, input().split())\n# Your code here",
+      "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int a = sc.nextInt(), b = sc.nextInt();\n        // Your code here\n    }\n}"
+    }
+  },
+  {
+    "id": 3,
+    "title": "FizzBuzz",
+    "description": "Print the numbers from 1 to N (read from stdin), but:\n- For multiples of 3 print 'Fizz'\n- For multiples of 5 print 'Buzz'\n- For multiples of both print 'FizzBuzz'\n\nExample:\nInput: 5\nOutput:\n1\n2\nFizz\n4\nBuzz",
+    "difficulty": "Easy",
+    "test_cases": [
+      {"input": "5\n", "output": "1\n2\nFizz\n4\nBuzz\n", "hidden": false},
+      {"input": "15\n", "output": "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n", "hidden": false},
+      {"input": "1\n", "output": "1\n", "hidden": true},
+      {"input": "20\n", "output": "1\n2\nFizz\n4\nBuzz\nFizz\n7\n8\nFizz\nBuzz\n11\nFizz\n13\n14\nFizzBuzz\n16\n17\nFizz\n19\nBuzz\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\nint main() {\n    int n;\n    std::cin >> n;\n    // Your code here\n    return 0;\n}",
+      "python": "n = int(input())\n# Your code here",
+      "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        // Your code here\n    }\n}"
+    }
+  },
+  {
+    "id": 4,
+    "title": "Reverse a String",
+    "description": "Read a single line from stdin and print it reversed.\n\nExample:\nInput: hello\nOutput: olleh",
+    "difficulty": "Easy",
+    "test_cases": [
+      {"input": "hello\n", "output": "olleh\n", "hidden": false},
+      {"input": "racecar\n", "output": "racecar\n", "hidden": false},
+      {"input": "OpenAI\n", "output": "IAnepO\n", "hidden": true},
+      {"input": "a\n", "output": "a\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\n#include <string>\nint main() {\n    std::string s;\n    std::cin >> s;\n    // Your code here\n    return 0;\n}",
+      "python": "s = input()\n# Your code here",
+      "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        String s = sc.nextLine();\n        // Your code here\n    }\n}"
+    }
+  },
+  {
+    "id": 5,
+    "title": "Palindrome Check",
+    "description": "Read a single word from stdin and print 'YES' if it is a palindrome, or 'NO' otherwise. Ignore case.\n\nExample:\nInput: Racecar\nOutput: YES\n\nInput: hello\nOutput: NO",
+    "difficulty": "Easy",
+    "test_cases": [
+      {"input": "racecar\n", "output": "YES\n", "hidden": false},
+      {"input": "hello\n", "output": "NO\n", "hidden": false},
+      {"input": "Racecar\n", "output": "YES\n", "hidden": true},
+      {"input": "a\n", "output": "YES\n", "hidden": true},
+      {"input": "AbBa\n", "output": "YES\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\n#include <string>\n#include <algorithm>\nint main() {\n    std::string s;\n    std::cin >> s;\n    // Your code here\n    return 0;\n}",
+      "python": "s = input().strip()\n# Your code here",
+      "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        String s = sc.nextLine().trim();\n        // Your code here\n    }\n}"
+    }
+  },
+  {
+    "id": 6,
+    "title": "Fibonacci Sequence",
+    "description": "Read an integer N from stdin and print the first N Fibonacci numbers, one per line. The sequence starts: 0, 1, 1, 2, 3, 5, ...\n\nExample:\nInput: 6\nOutput:\n0\n1\n1\n2\n3\n5",
+    "difficulty": "Medium",
+    "test_cases": [
+      {"input": "6\n", "output": "0\n1\n1\n2\n3\n5\n", "hidden": false},
+      {"input": "1\n", "output": "0\n", "hidden": false},
+      {"input": "10\n", "output": "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n", "hidden": true},
+      {"input": "2\n", "output": "0\n1\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\nint main() {\n    int n;\n    std::cin >> n;\n    // Your code here\n    return 0;\n}",
+      "python": "n = int(input())\n# Your code here",
+      "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        // Your code here\n    }\n}"
+    }
+  },
+  {
+    "id": 7,
+    "title": "Two Sum",
+    "description": "Given an array of integers and a target value, find the indices of the two numbers that add up to the target. Print the two indices (0-based) in ascending order on a single line, separated by a space. Assume exactly one solution exists.\n\nInput format:\n- Line 1: N (number of elements)\n- Line 2: N space-separated integers\n- Line 3: target\n\nExample:\nInput:\n4\n2 7 11 15\n9\nOutput: 0 1",
+    "difficulty": "Medium",
+    "test_cases": [
+      {"input": "4\n2 7 11 15\n9\n", "output": "0 1\n", "hidden": false},
+      {"input": "3\n3 2 4\n6\n", "output": "1 2\n", "hidden": false},
+      {"input": "2\n3 3\n6\n", "output": "0 1\n", "hidden": true},
+      {"input": "5\n1 5 3 7 2\n8\n", "output": "1 3\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\n#include <vector>\nint main() {\n    int n;\n    std::cin >> n;\n    std::vector<int> nums(n);\n    for (int i = 0; i < n; i++) std::cin >> nums[i];\n    int target;\n    std::cin >> target;\n    // Your code here\n    return 0;\n}",
+      "python": "n = int(input())\nnums = list(map(int, input().split()))\ntarget = int(input())\n# Your code here",
+      "java": "import java.util.*;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        int[] nums = new int[n];\n        for (int i = 0; i < n; i++) nums[i] = sc.nextInt();\n        int target = sc.nextInt();\n        // Your code here\n    }\n}"
+    }
+  },
+  {
+    "id": 8,
+    "title": "Count Words",
+    "description": "Read a single line of text from stdin and print the number of words in it. Words are separated by one or more spaces.\n\nExample:\nInput: hello world foo\nOutput: 3",
+    "difficulty": "Easy",
+    "test_cases": [
+      {"input": "hello world foo\n", "output": "3\n", "hidden": false},
+      {"input": "one\n", "output": "1\n", "hidden": false},
+      {"input": "the quick brown fox jumps\n", "output": "5\n", "hidden": true},
+      {"input": "a  b   c\n", "output": "3\n", "hidden": true}
+    ],
+    "starter_code": {
+      "cpp": "#include <iostream>\n#include <string>\n#include <sstream>\nint main() {\n    std::string line;\n    std::getline(std::cin, line);\n    // Your code here\n    return 0;\n}",
+      "python": "line = input()\n# Your code here",
+      "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        String line = sc.nextLine();\n        // Your code here\n    }\n}"
+    }
+  }
+]
