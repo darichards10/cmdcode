@@ -237,6 +237,103 @@ class TestSubmit:
 
 
 # ---------------------------------------------------------------------------
+# GET /api/leaderboard
+# ---------------------------------------------------------------------------
+
+class TestApiLeaderboard:
+    def test_returns_200(self):
+        resp = client.get("/api/leaderboard")
+        assert resp.status_code == 200
+
+    def test_returns_empty_list_when_no_submissions(self):
+        data = client.get("/api/leaderboard").json()
+        assert data == []
+
+    def test_returns_users_ranked_by_solved(self, db_session):
+        from models import DBSubmission
+        # user1 solves 2 problems, user2 solves 1
+        for pid in (1, 2):
+            db_session.add(DBSubmission(
+                problem_id=pid, username="user1", filename="s.py",
+                code="x", language=".py", submitted_at="2025-01-01T00:00:00Z",
+                size_bytes=1, status="Accepted", passed=True, results=[],
+            ))
+        db_session.add(DBSubmission(
+            problem_id=1, username="user2", filename="s.py",
+            code="x", language=".py", submitted_at="2025-01-01T00:00:00Z",
+            size_bytes=1, status="Accepted", passed=True, results=[],
+        ))
+        db_session.commit()
+        data = client.get("/api/leaderboard").json()
+        assert len(data) == 2
+        assert data[0]["username"] == "user1"
+        assert data[0]["solved"] == 2
+        assert data[0]["rank"] == 1
+        assert data[1]["username"] == "user2"
+        assert data[1]["solved"] == 1
+        assert data[1]["rank"] == 2
+
+    def test_excludes_failed_submissions(self, db_session):
+        from models import DBSubmission
+        db_session.add(DBSubmission(
+            problem_id=1, username="loser", filename="s.py",
+            code="x", language=".py", submitted_at="2025-01-01T00:00:00Z",
+            size_bytes=1, status="Wrong", passed=False, results=[],
+        ))
+        db_session.commit()
+        data = client.get("/api/leaderboard").json()
+        assert all(r["username"] != "loser" for r in data)
+
+    def test_counts_unique_problems_only(self, db_session):
+        from models import DBSubmission
+        # Same problem solved twice should count as 1
+        for _ in range(3):
+            db_session.add(DBSubmission(
+                problem_id=1, username="repeater", filename="s.py",
+                code="x", language=".py", submitted_at="2025-01-01T00:00:00Z",
+                size_bytes=1, status="Accepted", passed=True, results=[],
+            ))
+        db_session.commit()
+        data = client.get("/api/leaderboard").json()
+        entry = [r for r in data if r["username"] == "repeater"]
+        assert len(entry) == 1
+        assert entry[0]["solved"] == 1
+
+
+# ---------------------------------------------------------------------------
+# GET /api/problems/public
+# ---------------------------------------------------------------------------
+
+class TestApiProblemsPublic:
+    def test_returns_200(self):
+        resp = client.get("/api/problems/public")
+        assert resp.status_code == 200
+
+    def test_returns_list(self):
+        data = client.get("/api/problems/public").json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+
+    def test_contains_hello_world(self):
+        data = client.get("/api/problems/public").json()
+        assert any(p["title"] == "Hello World" for p in data)
+
+    def test_does_not_expose_test_cases(self):
+        data = client.get("/api/problems/public").json()
+        for p in data:
+            assert "test_cases" not in p
+            assert "starter_code" not in p
+
+    def test_contains_expected_fields(self):
+        data = client.get("/api/problems/public").json()
+        for p in data:
+            assert "id" in p
+            assert "title" in p
+            assert "difficulty" in p
+            assert "description" in p
+
+
+# ---------------------------------------------------------------------------
 # Auth: register
 # ---------------------------------------------------------------------------
 
