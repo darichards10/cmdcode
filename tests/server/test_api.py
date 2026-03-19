@@ -527,3 +527,133 @@ class TestProtectedRoutes:
         ))
         db_session.commit()
         assert client.get("/problems/1", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Security: rate limiting
+# ---------------------------------------------------------------------------
+
+class TestSubmissionRateLimit:
+    """Exponential backoff rate limiting on POST /submit."""
+
+    @patch("main.httpx.AsyncClient")
+    def test_second_submission_too_fast_returns_429(self, MockClient):
+        _mock_judge0(MockClient, _judge0_response(3, "Accepted", "Hello, World!"))
+        code = '#include <iostream>\nint main() { std::cout << "Hello, World!\\n"; return 0; }\n'
+        files = make_upload(code)
+        # First submission succeeds
+        resp1 = client.post("/submit/1", files=files)
+        assert resp1.status_code == 200
+        # Immediate second submission should be rate limited
+        resp2 = client.post("/submit/1", files=files)
+        assert resp2.status_code == 429
+
+    @patch("main.httpx.AsyncClient")
+    def test_rate_limit_response_has_retry_after_header(self, MockClient):
+        _mock_judge0(MockClient, _judge0_response(3, "Accepted", "Hello, World!"))
+        code = '#include <iostream>\nint main() { std::cout << "Hello, World!\\n"; return 0; }\n'
+        files = make_upload(code)
+        client.post("/submit/1", files=files)
+        resp = client.post("/submit/1", files=files)
+        assert resp.status_code == 429
+        assert "Retry-After" in resp.headers
+
+
+class TestChallengeRateLimit:
+    """Max challenge requests per user per window."""
+
+    def test_challenge_rate_limit(self):
+        _, pub_pem = _make_ed25519_keypair()
+        client.post("/auth/register", json={
+            "username": "ratelimituser", "email": "rl@example.com", "public_key": pub_pem,
+        })
+        from main import CHALLENGE_RATE_LIMIT
+        # Exhaust the limit
+        for _ in range(CHALLENGE_RATE_LIMIT):
+            client.get("/auth/challenge/ratelimituser")
+        # Next one should be rejected
+        resp = client.get("/auth/challenge/ratelimituser")
+        assert resp.status_code == 429
+
+
+class TestVerifyFailRateLimit:
+    """Lock out after too many failed verifications."""
+
+    def test_verify_lockout_after_too_many_failures(self):
+        _, pub_pem = _make_ed25519_keypair()
+        client.post("/auth/register", json={
+            "username": "lockoutuser", "email": "lo@example.com", "public_key": pub_pem,
+        })
+        from main import VERIFY_FAIL_LIMIT
+        bad_sig = base64.b64encode(b"\x00" * 64).decode()
+        for _ in range(VERIFY_FAIL_LIMIT):
+            # Each attempt needs a fresh challenge
+            data = client.get("/auth/challenge/lockoutuser").json()
+            client.post("/auth/verify", json={
+                "username": "lockoutuser",
+                "challenge_id": data["challenge_id"],
+                "signature": bad_sig,
+            })
+        # After VERIFY_FAIL_LIMIT failures the user should be locked out
+        data = client.get("/auth/challenge/lockoutuser").json()
+        resp = client.post("/auth/verify", json={
+            "username": "lockoutuser",
+            "challenge_id": data["challenge_id"],
+            "signature": bad_sig,
+        })
+        assert resp.status_code == 429
+
+
+# ---------------------------------------------------------------------------
+# Security: file upload limits and filename sanitization
+# ---------------------------------------------------------------------------
+
+class TestUploadLimits:
+    def test_oversized_file_returns_413(self):
+        from main import MAX_UPLOAD_BYTES
+        oversized = "x" * (MAX_UPLOAD_BYTES + 1)
+        files = {"file": ("solution.cpp", oversized.encode(), "text/plain")}
+        resp = client.post("/submit/1", files=files)
+        assert resp.status_code == 413
+
+    @patch("main.httpx.AsyncClient")
+    def test_path_traversal_filename_sanitized(self, MockClient):
+        _mock_judge0(MockClient, _judge0_response(3, "Accepted", "Hello, World!"))
+        code = '#include <iostream>\nint main() { std::cout << "Hello, World!\\n"; return 0; }\n'
+        files = {"file": ("../../etc/passwd.cpp", code.encode(), "text/plain")}
+        resp = client.post("/submit/1", files=files)
+        assert resp.status_code == 200
+        # The stored filename must not contain directory separators
+        assert "/" not in resp.json()["filename"]
+        assert "\\" not in resp.json()["filename"]
+
+    @patch("main.httpx.AsyncClient")
+    def test_null_byte_in_filename_sanitized(self, MockClient):
+        _mock_judge0(MockClient, _judge0_response(3, "Accepted", "Hello, World!"))
+        code = '#include <iostream>\nint main() { std::cout << "Hello, World!\\n"; return 0; }\n'
+        files = {"file": ("solution\x00evil.cpp", code.encode(), "text/plain")}
+        resp = client.post("/submit/1", files=files)
+        assert resp.status_code == 200
+        assert "\x00" not in resp.json()["filename"]
+
+
+# ---------------------------------------------------------------------------
+# Security: security headers middleware
+# ---------------------------------------------------------------------------
+
+class TestSecurityHeaders:
+    def test_root_has_nosniff_header(self):
+        resp = client.get("/")
+        assert resp.headers.get("x-content-type-options") == "nosniff"
+
+    def test_root_has_x_frame_options(self):
+        resp = client.get("/")
+        assert resp.headers.get("x-frame-options") == "DENY"
+
+    def test_root_has_referrer_policy(self):
+        resp = client.get("/")
+        assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+
+    def test_root_has_cache_control(self):
+        resp = client.get("/")
+        assert resp.headers.get("cache-control") == "no-store"

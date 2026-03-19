@@ -54,3 +54,12 @@ class DBSubmission(Base):
     status = Column(String, nullable=False)
     passed = Column(Boolean, nullable=False)
     results = Column(JSON)
+
+
+class DBRateLimit(Base):
+    __tablename__ = "rate_limits"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(20), ForeignKey("users.username"), nullable=False, index=True)
+    action = Column(String, nullable=False)       # "submit", "challenge", "verify_fail"
+    timestamp = Column(String, nullable=False)     # ISO-8601 string
