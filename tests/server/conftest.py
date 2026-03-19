@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from database import Base, get_db
-from main import app, SEED_PROBLEMS
+from main import app, SEED_PROBLEMS, _register_ip_counts
 from models import DBProblem
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -48,6 +48,7 @@ def reset_db():
         db.close()
     yield
     Base.metadata.drop_all(bind=test_engine)
+    _register_ip_counts.clear()
 
 
 @pytest.fixture

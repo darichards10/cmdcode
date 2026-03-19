@@ -1,10 +1,13 @@
 # server/main.py
 import base64
+import math
+import re
 import secrets
 import uuid
 import httpx
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Depends
+from fastapi import FastAPI, Request, Response, UploadFile, File, HTTPException, Header, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Dict
@@ -17,9 +20,31 @@ from cryptography.exceptions import InvalidSignature
 
 from contextlib import asynccontextmanager
 from database import Base, engine, get_db
-from models import DBChallenge, DBProblem, DBSession, DBSubmission, DBUser
+from models import DBChallenge, DBProblem, DBRateLimit, DBSession, DBSubmission, DBUser
 
 load_dotenv()
+
+
+# ---------------------------------------------------------------------------
+# Rate-limit constants
+# ---------------------------------------------------------------------------
+
+SUBMIT_RATE_BASE_SECONDS = 2       # base cooldown between submissions
+SUBMIT_RATE_WINDOW_SECONDS = 300   # 5-minute sliding window
+SUBMIT_RATE_MAX_COOLDOWN = 120     # cap at 2 minutes
+
+CHALLENGE_RATE_LIMIT = 10          # max challenges per username per window
+CHALLENGE_RATE_WINDOW = 300        # 5-minute window
+
+VERIFY_FAIL_LIMIT = 5             # max failed verifications per username
+VERIFY_FAIL_WINDOW = 900          # 15-minute window
+
+MAX_UPLOAD_BYTES = 1_048_576       # 1 MB file upload limit
+
+# In-memory IP-based registration limiter
+_register_ip_counts: Dict[str, list] = defaultdict(list)
+REGISTER_IP_LIMIT = 5
+REGISTER_IP_WINDOW = 3600          # 1 hour
 
 
 @asynccontextmanager
@@ -36,6 +61,20 @@ async def lifespan(application):
 app = FastAPI(title="cmdcode Server", description="Your personal coding judge", lifespan=lifespan)
 APP_PORT = int(os.getenv("APP_PORT", 8000))
 JUDGE0_URL = os.getenv("JUDGE0_URL", "http://judge0:2358")
+
+
+# ---------------------------------------------------------------------------
+# Security headers middleware
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +173,81 @@ def _row_to_problem(row: DBProblem) -> Problem:
 
 
 # ---------------------------------------------------------------------------
+# Rate-limit helpers
+# ---------------------------------------------------------------------------
+
+def _count_recent_actions(db: Session, username: str, action: str, window_seconds: int) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+    return db.query(DBRateLimit).filter(
+        DBRateLimit.username == username,
+        DBRateLimit.action == action,
+        DBRateLimit.timestamp > cutoff,
+    ).count()
+
+
+def _record_action(db: Session, username: str, action: str) -> None:
+    db.add(DBRateLimit(
+        username=username,
+        action=action,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+    ))
+    db.commit()
+
+
+def _get_last_action_time(db: Session, username: str, action: str) -> datetime | None:
+    row = db.query(DBRateLimit).filter(
+        DBRateLimit.username == username,
+        DBRateLimit.action == action,
+    ).order_by(DBRateLimit.timestamp.desc()).first()
+    if row:
+        return datetime.fromisoformat(row.timestamp).replace(tzinfo=timezone.utc)
+    return None
+
+
+def _check_submission_rate(db: Session, username: str) -> None:
+    recent_count = _count_recent_actions(db, username, "submit", SUBMIT_RATE_WINDOW_SECONDS)
+    if recent_count == 0:
+        return
+
+    cooldown = min(
+        SUBMIT_RATE_BASE_SECONDS * (2 ** (recent_count - 1)),
+        SUBMIT_RATE_MAX_COOLDOWN,
+    )
+
+    last_submit = _get_last_action_time(db, username, "submit")
+    if last_submit:
+        elapsed = (datetime.now(timezone.utc) - last_submit).total_seconds()
+        if elapsed < cooldown:
+            retry_after = math.ceil(cooldown - elapsed)
+            raise HTTPException(
+                status_code=429,
+                detail=f"Rate limited. Try again in {retry_after}s.",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+
+def _cleanup_expired_records(db: Session) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    db.query(DBChallenge).filter(DBChallenge.expires_at < now).delete()
+    db.query(DBSession).filter(DBSession.expires_at < now).delete()
+    # Clean up old rate-limit entries (older than the longest window)
+    cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(
+        SUBMIT_RATE_WINDOW_SECONDS, CHALLENGE_RATE_WINDOW, VERIFY_FAIL_WINDOW
+    ))).isoformat()
+    db.query(DBRateLimit).filter(DBRateLimit.timestamp < cutoff).delete()
+    db.commit()
+
+
+def _sanitize_filename(filename: str) -> str:
+    name = os.path.basename(filename)
+    # Remove null bytes and control characters
+    name = re.sub(r'[\x00-\x1f\x7f]', '', name)
+    if not name:
+        name = "solution.unknown"
+    return name
+
+
+# ---------------------------------------------------------------------------
 # Auth dependency
 # ---------------------------------------------------------------------------
 
@@ -170,7 +284,18 @@ def root():
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/register", status_code=201)
-def auth_register(req: RegisterRequest, db: Session = Depends(get_db)):
+def auth_register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    # IP-based registration rate limiting
+    client_ip = request.client.host if request.client else "unknown"
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(seconds=REGISTER_IP_WINDOW)
+    _register_ip_counts[client_ip] = [
+        t for t in _register_ip_counts[client_ip] if t > cutoff
+    ]
+    if len(_register_ip_counts[client_ip]) >= REGISTER_IP_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many registrations. Try again later.")
+    _register_ip_counts[client_ip].append(now)
+
     if not req.username.isalnum() or not (3 <= len(req.username) <= 20):
         raise HTTPException(status_code=422, detail="Username must be 3-20 alphanumeric characters")
     if db.query(DBUser).filter(DBUser.username == req.username).first():
@@ -189,6 +314,10 @@ def auth_register(req: RegisterRequest, db: Session = Depends(get_db)):
         created_at=datetime.now(timezone.utc).isoformat(),
     ))
     db.commit()
+
+    # Opportunistic cleanup of expired records
+    _cleanup_expired_records(db)
+
     return {"message": "registered", "username": req.username}
 
 
@@ -196,6 +325,12 @@ def auth_register(req: RegisterRequest, db: Session = Depends(get_db)):
 def auth_challenge(username: str, db: Session = Depends(get_db)):
     if not db.query(DBUser).filter(DBUser.username == username).first():
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Rate limit challenge requests per username
+    recent_challenges = _count_recent_actions(db, username, "challenge", CHALLENGE_RATE_WINDOW)
+    if recent_challenges >= CHALLENGE_RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many challenge requests. Try again later.")
+
     challenge_id = str(uuid.uuid4())
     nonce = secrets.token_bytes(32).hex()
     db.add(DBChallenge(
@@ -204,12 +339,21 @@ def auth_challenge(username: str, db: Session = Depends(get_db)):
         nonce=nonce,
         expires_at=(datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(),
     ))
-    db.commit()
+    _record_action(db, username, "challenge")
+
+    # Opportunistic cleanup
+    _cleanup_expired_records(db)
+
     return {"challenge_id": challenge_id, "nonce": nonce}
 
 
 @app.post("/auth/verify")
 def auth_verify(req: VerifyRequest, db: Session = Depends(get_db)):
+    # Rate limit failed verification attempts
+    recent_failures = _count_recent_actions(db, req.username, "verify_fail", VERIFY_FAIL_WINDOW)
+    if recent_failures >= VERIFY_FAIL_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many failed attempts. Account temporarily locked.")
+
     challenge = db.query(DBChallenge).filter(DBChallenge.challenge_id == req.challenge_id).first()
     if not challenge:
         raise HTTPException(status_code=401, detail="Challenge expired or not found")
@@ -230,8 +374,10 @@ def auth_verify(req: VerifyRequest, db: Session = Depends(get_db)):
         nonce_bytes = bytes.fromhex(challenge.nonce)
         pub_key.verify(signature, nonce_bytes)
     except InvalidSignature:
+        _record_action(db, req.username, "verify_fail")
         raise HTTPException(status_code=401, detail="Invalid signature")
     except Exception:
+        _record_action(db, req.username, "verify_fail")
         raise HTTPException(status_code=401, detail="Verification failed")
 
     # Consume challenge to prevent replay
@@ -272,11 +418,19 @@ async def submit_solution(
     username: str = Depends(require_auth),
     db: Session = Depends(get_db),
 ):
-    filename = file.filename or "solution.unknown"
+    # Exponential backoff rate limiting
+    _check_submission_rate(db, username)
+
+    filename = _sanitize_filename(file.filename or "solution.unknown")
     content_type = file.content_type or ""
     file_ext = os.path.splitext(filename)[1].lower()
 
     raw_bytes = await file.read()
+
+    # File size limit
+    if len(raw_bytes) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 1 MB.")
+
     try:
         if "base64" in content_type.lower():
             base64_str = raw_bytes.decode("utf-8").strip()
@@ -346,7 +500,11 @@ async def submit_solution(
                 })
                 all_passed = False
 
-    submitted_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%SZ")
+    submitted_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ")
+
+    # Record submission for rate limiting
+    _record_action(db, username, "submit")
+
     db.add(DBSubmission(
         problem_id=problem_id,
         username=username,
