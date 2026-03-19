@@ -8,8 +8,10 @@ import httpx
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request, Response, UploadFile, File, HTTPException, Header, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Dict
 import uvicorn
 import os
@@ -61,6 +63,14 @@ async def lifespan(application):
 app = FastAPI(title="cmdcode Server", description="Your personal coding judge", lifespan=lifespan)
 APP_PORT = int(os.getenv("APP_PORT", 8000))
 JUDGE0_URL = os.getenv("JUDGE0_URL", "http://judge0:2358")
+
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +287,36 @@ def root():
         "status": "online",
         "message": "The judge is ready."
     }
+
+
+# ---------------------------------------------------------------------------
+# Public API endpoints (no token required)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/leaderboard")
+def api_leaderboard(db: Session = Depends(get_db)):
+    """Return users ranked by number of unique problems solved (accepted)."""
+    rows = (
+        db.query(
+            DBSubmission.username,
+            func.count(func.distinct(DBSubmission.problem_id)).label("solved"),
+        )
+        .filter(DBSubmission.passed == True)
+        .group_by(DBSubmission.username)
+        .order_by(func.count(func.distinct(DBSubmission.problem_id)).desc())
+        .all()
+    )
+    return [{"rank": i + 1, "username": r.username, "solved": r.solved} for i, r in enumerate(rows)]
+
+
+@app.get("/api/problems/public")
+def api_problems_public(db: Session = Depends(get_db)):
+    """Return problem metadata (no test cases or starter code) without auth."""
+    rows = db.query(DBProblem).all()
+    return [
+        {"id": p.id, "title": p.title, "difficulty": p.difficulty, "description": p.description}
+        for p in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
