@@ -1,0 +1,47 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rank {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.rank1 {
+  color: #ffd700;
+}
+
+.rank2 {
+  color: #c0c0c0;
+}
+
+.rank3 {
+  color: #cd7f32;
+}
+
+.solved {
+  font-weight: 600;
+  color: var(--green);
+}
+
+.empty {
+  color: var(--muted);
+  padding: 1.5rem;
+  text-align: center;
+}

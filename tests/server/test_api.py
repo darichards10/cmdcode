@@ -334,28 +334,6 @@ class TestApiProblemsPublic:
 
 
 # ---------------------------------------------------------------------------
-# GET /ui
-# ---------------------------------------------------------------------------
-
-class TestUiPage:
-    def test_returns_200(self):
-        resp = client.get("/ui")
-        assert resp.status_code == 200
-
-    def test_returns_html(self):
-        resp = client.get("/ui")
-        assert "text/html" in resp.headers["content-type"]
-
-    def test_contains_cmdcode(self):
-        resp = client.get("/ui")
-        assert "cmdcode" in resp.text
-
-    def test_contains_github_link(self):
-        resp = client.get("/ui")
-        assert "github.com" in resp.text
-
-
-# ---------------------------------------------------------------------------
 # Auth: register
 # ---------------------------------------------------------------------------
 

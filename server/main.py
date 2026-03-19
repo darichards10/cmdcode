@@ -5,7 +5,7 @@ import uuid
 import httpx
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -38,6 +38,14 @@ async def lifespan(application):
 app = FastAPI(title="cmdcode Server", description="Your personal coding judge", lifespan=lifespan)
 APP_PORT = int(os.getenv("APP_PORT", 8000))
 JUDGE0_URL = os.getenv("JUDGE0_URL", "http://judge0:2358")
+
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---------------------------------------------------------------------------
@@ -171,9 +179,6 @@ def root():
 # Public API endpoints (no token required)
 # ---------------------------------------------------------------------------
 
-GITHUB_URL = os.getenv("GITHUB_URL", "https://github.com/darichards10/cmdcode")
-
-
 @app.get("/api/leaderboard")
 def api_leaderboard(db: Session = Depends(get_db)):
     """Return users ranked by number of unique problems solved (accepted)."""
@@ -198,12 +203,6 @@ def api_problems_public(db: Session = Depends(get_db)):
         {"id": p.id, "title": p.title, "difficulty": p.difficulty, "description": p.description}
         for p in rows
     ]
-
-
-@app.get("/ui", response_class=HTMLResponse)
-def ui_page(db: Session = Depends(get_db)):
-    """Serve a self-contained HTML dashboard."""
-    return _DASHBOARD_HTML
 
 
 # ---------------------------------------------------------------------------
@@ -413,112 +412,6 @@ async def submit_solution(
         passed=all_passed,
         results=results,
     )
-
-
-# ---------------------------------------------------------------------------
-# Dashboard HTML
-# ---------------------------------------------------------------------------
-
-_DASHBOARD_HTML = """\
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>cmdcode</title>
-<style>
-  :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3;
-          --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --yellow: #d29922; --red: #f85149; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-         background: var(--bg); color: var(--text); line-height: 1.5; padding: 2rem 1rem; }
-  .container { max-width: 900px; margin: 0 auto; }
-  h1 { font-size: 2rem; margin-bottom: .25rem; }
-  h1 span { color: var(--accent); }
-  .subtitle { color: var(--muted); margin-bottom: 2rem; }
-  .subtitle a { color: var(--accent); text-decoration: none; }
-  .subtitle a:hover { text-decoration: underline; }
-  h2 { font-size: 1.25rem; margin-bottom: 1rem; color: var(--muted); }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
-  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: .75rem; font-weight: 600; }
-  .badge-easy { background: rgba(63,185,80,.15); color: var(--green); }
-  .badge-medium { background: rgba(210,153,34,.15); color: var(--yellow); }
-  .badge-hard { background: rgba(248,81,73,.15); color: var(--red); }
-  .rank { font-weight: 700; color: var(--accent); }
-  .rank-1 { color: #ffd700; }
-  .rank-2 { color: #c0c0c0; }
-  .rank-3 { color: #cd7f32; }
-  .solved { font-weight: 600; color: var(--green); }
-  .empty { color: var(--muted); padding: 1.5rem; text-align: center; }
-  .footer { text-align: center; margin-top: 2rem; color: var(--muted); font-size: .85rem; }
-  .footer a { color: var(--accent); text-decoration: none; }
-</style>
-</head>
-<body>
-<div class="container">
-  <h1><span>&gt;</span> cmdcode</h1>
-  <p class="subtitle">Terminal-first competitive programming &mdash;
-    <a href="GITHUB_URL_PLACEHOLDER" target="_blank">GitHub</a>
-  </p>
-  <div class="grid">
-    <div class="card">
-      <h2>Problems</h2>
-      <div id="problems"><p class="empty">Loading&hellip;</p></div>
-    </div>
-    <div class="card">
-      <h2>Leaderboard</h2>
-      <div id="leaderboard"><p class="empty">Loading&hellip;</p></div>
-    </div>
-  </div>
-  <p class="footer">Install the CLI: <code>pip install cmdcode</code> &mdash;
-    <a href="GITHUB_URL_PLACEHOLDER" target="_blank">View on GitHub</a>
-  </p>
-</div>
-<script>
-(function() {
-  const base = window.location.origin;
-
-  fetch(base + '/api/problems/public')
-    .then(r => r.json())
-    .then(problems => {
-      const el = document.getElementById('problems');
-      if (!problems.length) { el.innerHTML = '<p class="empty">No problems yet.</p>'; return; }
-      let html = '<table><thead><tr><th>#</th><th>Title</th><th>Difficulty</th></tr></thead><tbody>';
-      problems.forEach(p => {
-        const cls = 'badge badge-' + p.difficulty.toLowerCase();
-        html += '<tr><td>' + p.id + '</td><td>' + esc(p.title) + '</td><td><span class="' + cls + '">' + esc(p.difficulty) + '</span></td></tr>';
-      });
-      html += '</tbody></table>';
-      el.innerHTML = html;
-    })
-    .catch(() => { document.getElementById('problems').innerHTML = '<p class="empty">Failed to load.</p>'; });
-
-  fetch(base + '/api/leaderboard')
-    .then(r => r.json())
-    .then(rows => {
-      const el = document.getElementById('leaderboard');
-      if (!rows.length) { el.innerHTML = '<p class="empty">No solves yet. Be the first!</p>'; return; }
-      let html = '<table><thead><tr><th>Rank</th><th>User</th><th>Solved</th></tr></thead><tbody>';
-      rows.forEach(r => {
-        const rc = r.rank <= 3 ? ' rank-' + r.rank : '';
-        html += '<tr><td><span class="rank' + rc + '">#' + r.rank + '</span></td><td>' + esc(r.username) + '</td><td class="solved">' + r.solved + '</td></tr>';
-      });
-      html += '</tbody></table>';
-      el.innerHTML = html;
-    })
-    .catch(() => { document.getElementById('leaderboard').innerHTML = '<p class="empty">Failed to load.</p>'; });
-
-  function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-})();
-</script>
-</body>
-</html>
-""".replace("GITHUB_URL_PLACEHOLDER", GITHUB_URL)
 
 
 if __name__ == "__main__":
