@@ -1,5 +1,6 @@
 # server/main.py
 import base64
+import json
 import math
 import re
 import secrets
@@ -145,30 +146,16 @@ LANGUAGE_IDS = {
 # Seed data
 # ---------------------------------------------------------------------------
 
-SEED_PROBLEMS = [
-    {
-        "id": 1,
-        "title": "Hello World",
-        "description": "Write a program that prints 'Hello, World!' exactly.",
-        "difficulty": "Easy",
-        "test_cases": [
-            {"input": "", "output": "Hello, World!\n", "hidden": False},
-            {"input": "", "output": "Hello, World!\n", "hidden": True},
-        ],
-        "starter_code": {
-            "cpp": '#include <iostream>\nint main() {\n    // Your code here\n    return 0;\n}',
-            "python": 'print("Hello, World!")',
-            "java": 'public class Solution {\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n}',
-        },
-    }
-]
+_PROBLEMS_FILE = os.path.join(os.path.dirname(__file__), "problems.json")
 
 
 def _seed_problems(db: Session) -> None:
-    if db.query(DBProblem).count() == 0:
-        for p in SEED_PROBLEMS:
+    with open(_PROBLEMS_FILE) as f:
+        problems = json.load(f)
+    for p in problems:
+        if not db.query(DBProblem).filter(DBProblem.id == p["id"]).first():
             db.add(DBProblem(**p))
-        db.commit()
+    db.commit()
 
 
 def _row_to_problem(row: DBProblem) -> Problem:
