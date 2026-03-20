@@ -12,10 +12,11 @@ services:
       - "${APP_PORT}:${APP_PORT}"
     volumes:
       - ./server:/app
+      - cmdcode-data:/data
     environment:
       - JUDGE0_URL=${JUDGE0_URL}
       - APP_PORT=${APP_PORT}
-      - DATABASE_URL=sqlite:///./cmdcode.db
+      - DATABASE_URL=sqlite:////data/cmdcode.db
       - CORS_ORIGINS=http://localhost:3000,http://cmdcode-frontend:3000
     networks:
       - judge-net
@@ -39,6 +40,9 @@ services:
 
 include:
   - ./judge/docker-compose.yml
+
+volumes:
+  cmdcode-data:
 
 networks:
   judge-net:

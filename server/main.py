@@ -1,6 +1,8 @@
 # server/main.py
+import asyncio
 import base64
 import json
+import logging
 import math
 import re
 import secrets
@@ -24,6 +26,8 @@ from cryptography.exceptions import InvalidSignature
 from contextlib import asynccontextmanager
 from database import Base, engine, get_db
 from models import DBChallenge, DBProblem, DBRateLimit, DBSession, DBSubmission, DBUser
+
+logger = logging.getLogger("cmdcode")
 
 load_dotenv()
 
@@ -55,10 +59,12 @@ async def lifespan(application):
     Base.metadata.create_all(bind=engine)
     db = next(get_db())
     try:
-        _seed_problems(db)
+        _sync_problems(db)
     finally:
         db.close()
+    task = asyncio.create_task(_problem_reload_loop())
     yield
+    task.cancel()
 
 
 app = FastAPI(title="cmdcode Server", description="Your personal coding judge", lifespan=lifespan)
@@ -148,14 +154,55 @@ LANGUAGE_IDS = {
 
 _PROBLEMS_FILE = os.path.join(os.path.dirname(__file__), "problems.json")
 
+# Track last-seen mtime so we only reload when the file actually changes
+_problems_file_mtime: float = 0.0
 
-def _seed_problems(db: Session) -> None:
+# How often (seconds) to check problems.json for changes
+PROBLEM_RELOAD_INTERVAL = int(os.getenv("PROBLEM_RELOAD_INTERVAL", "60"))
+
+
+def _sync_problems(db: Session) -> None:
+    """Upsert problems from problems.json into the database."""
+    global _problems_file_mtime
+    try:
+        current_mtime = os.path.getmtime(_PROBLEMS_FILE)
+    except OSError:
+        logger.warning("problems.json not found at %s", _PROBLEMS_FILE)
+        return
+
+    if current_mtime == _problems_file_mtime:
+        return  # file unchanged
+
     with open(_PROBLEMS_FILE) as f:
         problems = json.load(f)
+
     for p in problems:
-        if not db.query(DBProblem).filter(DBProblem.id == p["id"]).first():
+        existing = db.query(DBProblem).filter(DBProblem.id == p["id"]).first()
+        if existing:
+            existing.title = p["title"]
+            existing.description = p["description"]
+            existing.difficulty = p["difficulty"]
+            existing.starter_code = p["starter_code"]
+            existing.test_cases = p["test_cases"]
+        else:
             db.add(DBProblem(**p))
     db.commit()
+
+    _problems_file_mtime = current_mtime
+    logger.info("Synced %d problems from problems.json", len(problems))
+
+
+async def _problem_reload_loop() -> None:
+    """Background task: periodically check problems.json for changes."""
+    while True:
+        await asyncio.sleep(PROBLEM_RELOAD_INTERVAL)
+        db = next(get_db())
+        try:
+            _sync_problems(db)
+        except Exception:
+            logger.exception("Error reloading problems")
+        finally:
+            db.close()
 
 
 def _row_to_problem(row: DBProblem) -> Problem:
