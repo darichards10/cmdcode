@@ -1,0 +1,12 @@
+{
+  "id": 5,
+  "title": "Palindrome Check",
+  "description": "Read a single word from stdin and print 'YES' if it is a palindrome, or 'NO' otherwise. Ignore case.\n\nExample:\nInput: Racecar\nOutput: YES\n\nInput: hello\nOutput: NO",
+  "difficulty": "Easy",
+  "hidden_tests_start": 3,
+  "starter_code": {
+    "cpp": "#include <iostream>\n#include <string>\n#include <algorithm>\nint main() {\n    std::string s;\n    std::cin >> s;\n    // Your code here\n    return 0;\n}",
+    "python": "s = input().strip()\n# Your code here",
+    "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        String s = sc.nextLine().trim();\n        // Your code here\n    }\n}"
+  }
+}

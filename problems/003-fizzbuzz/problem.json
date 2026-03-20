@@ -1,0 +1,12 @@
+{
+  "id": 3,
+  "title": "FizzBuzz",
+  "description": "Print the numbers from 1 to N (read from stdin), but:\n- For multiples of 3 print 'Fizz'\n- For multiples of 5 print 'Buzz'\n- For multiples of both print 'FizzBuzz'\n\nExample:\nInput: 5\nOutput:\n1\n2\nFizz\n4\nBuzz",
+  "difficulty": "Easy",
+  "hidden_tests_start": 3,
+  "starter_code": {
+    "cpp": "#include <iostream>\nint main() {\n    int n;\n    std::cin >> n;\n    // Your code here\n    return 0;\n}",
+    "python": "n = int(input())\n# Your code here",
+    "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        // Your code here\n    }\n}"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": 6,
+  "title": "Fibonacci Sequence",
+  "description": "Read an integer N from stdin and print the first N Fibonacci numbers, one per line. The sequence starts: 0, 1, 1, 2, 3, 5, ...\n\nExample:\nInput: 6\nOutput:\n0\n1\n1\n2\n3\n5",
+  "difficulty": "Medium",
+  "hidden_tests_start": 3,
+  "starter_code": {
+    "cpp": "#include <iostream>\nint main() {\n    int n;\n    std::cin >> n;\n    // Your code here\n    return 0;\n}",
+    "python": "n = int(input())\n# Your code here",
+    "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        // Your code here\n    }\n}"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": 1,
+  "title": "Hello World",
+  "description": "Write a program that prints 'Hello, World!' exactly (with the comma, exclamation mark, and a newline at the end).",
+  "difficulty": "Easy",
+  "hidden_tests_start": 2,
+  "starter_code": {
+    "cpp": "#include <iostream>\nint main() {\n    // Your code here\n    return 0;\n}",
+    "python": "# Your code here",
+    "java": "public class Solution {\n    public static void main(String[] args) {\n        // Your code here\n    }\n}"
+  }
+}

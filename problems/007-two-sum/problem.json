@@ -1,0 +1,12 @@
+{
+  "id": 7,
+  "title": "Two Sum",
+  "description": "Given an array of integers and a target value, find the indices of the two numbers that add up to the target. Print the two indices (0-based) in ascending order on a single line, separated by a space. Assume exactly one solution exists.\n\nInput format:\n- Line 1: N (number of elements)\n- Line 2: N space-separated integers\n- Line 3: target\n\nExample:\nInput:\n4\n2 7 11 15\n9\nOutput: 0 1",
+  "difficulty": "Medium",
+  "hidden_tests_start": 3,
+  "starter_code": {
+    "cpp": "#include <iostream>\n#include <vector>\nint main() {\n    int n;\n    std::cin >> n;\n    std::vector<int> nums(n);\n    for (int i = 0; i < n; i++) std::cin >> nums[i];\n    int target;\n    std::cin >> target;\n    // Your code here\n    return 0;\n}",
+    "python": "n = int(input())\nnums = list(map(int, input().split()))\ntarget = int(input())\n# Your code here",
+    "java": "import java.util.*;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int n = sc.nextInt();\n        int[] nums = new int[n];\n        for (int i = 0; i < n; i++) nums[i] = sc.nextInt();\n        int target = sc.nextInt();\n        // Your code here\n    }\n}"
+  }
+}
