@@ -23,7 +23,7 @@ interface LeaderboardEntry {
 async function getProblems(): Promise<Problem[]> {
   try {
     const res = await fetch(`${API_URL}/api/problems/public`, {
-      next: { revalidate: 30 },
+      cache: "no-store",
     });
     if (!res.ok) return [];
     return res.json();
@@ -35,7 +35,7 @@ async function getProblems(): Promise<Problem[]> {
 async function getLeaderboard(): Promise<LeaderboardEntry[]> {
   try {
     const res = await fetch(`${API_URL}/api/leaderboard`, {
-      next: { revalidate: 30 },
+      cache: "no-store",
     });
     if (!res.ok) return [];
     return res.json();
