@@ -1,0 +1,12 @@
+{
+  "id": 2,
+  "title": "Sum Two Numbers",
+  "description": "Read two integers from a single line of stdin and print their sum.\n\nExample:\nInput: 3 5\nOutput: 8",
+  "difficulty": "Easy",
+  "hidden_tests_start": 3,
+  "starter_code": {
+    "cpp": "#include <iostream>\nint main() {\n    int a, b;\n    std::cin >> a >> b;\n    // Your code here\n    return 0;\n}",
+    "python": "a, b = map(int, input().split())\n# Your code here",
+    "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int a = sc.nextInt(), b = sc.nextInt();\n        // Your code here\n    }\n}"
+  }
+}

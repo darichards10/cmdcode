@@ -23,5 +23,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
+      - name: Validate problems
+        run: python problems/build.py --validate
+
       - name: Run tests
         run: pytest

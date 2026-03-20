@@ -1,0 +1,12 @@
+{
+  "id": 4,
+  "title": "Reverse a String",
+  "description": "Read a single line from stdin and print it reversed.\n\nExample:\nInput: hello\nOutput: olleh",
+  "difficulty": "Easy",
+  "hidden_tests_start": 3,
+  "starter_code": {
+    "cpp": "#include <iostream>\n#include <string>\nint main() {\n    std::string s;\n    std::cin >> s;\n    // Your code here\n    return 0;\n}",
+    "python": "s = input()\n# Your code here",
+    "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        String s = sc.nextLine();\n        // Your code here\n    }\n}"
+  }
+}

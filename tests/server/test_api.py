@@ -171,9 +171,9 @@ class TestListProblems:
 
     def test_upsert_does_not_duplicate_on_restart(self, db_session):
         """Seeding twice should not create duplicate problems."""
-        from main import _seed_problems
+        from main import _sync_problems
         before = client.get("/problems").json()
-        _seed_problems(db_session)
+        _sync_problems(db_session)
         after = client.get("/problems").json()
         assert len(before) == len(after)
 

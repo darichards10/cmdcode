@@ -10,7 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from database import Base, get_db
-from main import app, _seed_problems, _register_ip_counts
+import main
+from main import app, _sync_problems, _register_ip_counts
 
 TEST_DATABASE_URL = "sqlite:///:memory:"
 # StaticPool makes all sessions share one connection so in-memory data is visible everywhere
@@ -36,10 +37,11 @@ app.dependency_overrides[get_db] = _override_get_db
 @pytest.fixture(autouse=True)
 def reset_db():
     Base.metadata.create_all(bind=test_engine)
-    # Seed problems
+    # Reset mtime cache so _sync_problems always loads into the fresh DB
+    main._problems_file_mtime = 0.0
     db = TestSessionLocal()
     try:
-        _seed_problems(db)
+        _sync_problems(db)
     finally:
         db.close()
     yield

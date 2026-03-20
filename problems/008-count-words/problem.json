@@ -1,0 +1,12 @@
+{
+  "id": 8,
+  "title": "Count Words",
+  "description": "Read a single line of text from stdin and print the number of words in it. Words are separated by one or more spaces.\n\nExample:\nInput: hello world foo\nOutput: 3",
+  "difficulty": "Easy",
+  "hidden_tests_start": 3,
+  "starter_code": {
+    "cpp": "#include <iostream>\n#include <string>\n#include <sstream>\nint main() {\n    std::string line;\n    std::getline(std::cin, line);\n    // Your code here\n    return 0;\n}",
+    "python": "line = input()\n# Your code here",
+    "java": "import java.util.Scanner;\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        String line = sc.nextLine();\n        // Your code here\n    }\n}"
+  }
+}
