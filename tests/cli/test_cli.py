@@ -268,6 +268,21 @@ class TestSubmit:
         mock_post.return_value = _mock_get(_submit_payload())
         result = runner.invoke(app, ["submit", "1"])
         assert result.exit_code == 0
+    def test_submit_no_solution_file_errors(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["submit", "1"])
+        assert result.exit_code != 0
+        assert "no solution file found" in result.output.lower()
+        
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.post")
+    def test_submit_auto_detects_solution_py(self, mock_post, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        solution = tmp_path / "solution.py"
+        solution.write_text("print('hello')\n")
+        mock_post.return_value = _mock_get(_submit_payload())
+        result = runner.invoke(app, ["submit", "1"])
+        assert result.exit_code == 0
 
     def test_submit_no_solution_file_errors(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
