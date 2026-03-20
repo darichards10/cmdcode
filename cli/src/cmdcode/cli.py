@@ -215,13 +215,33 @@ def get(problem_id: int):
         console.print(f"[red]Problem {problem_id} not found[/red]")
 
 
+SUPPORTED_EXTENSIONS = {".cpp", ".c", ".py", ".java", ".js", ".ts", ".go", ".rs"}
+
+
+def _find_solution_file() -> Path | None:
+    """Auto-detect a solution file in the current directory."""
+    for ext in SUPPORTED_EXTENSIONS:
+        candidate = Path(f"solution{ext}")
+        if candidate.exists():
+            return candidate
+    return None
+
+
 @app.command()
 def submit(
     problem_id: int,
-    file: str = typer.Argument("solution.cpp", help="Source file to submit"),
+    file: str = typer.Argument(None, help="Source file to submit (auto-detected if omitted)"),
 ):
     """Submit your solution and get instant verdict."""
-    path = Path(file)
+    if file is None:
+        detected = _find_solution_file()
+        if detected is None:
+            console.print("[red]No solution file found.[/red] Provide a filename or create a solution.* file.")
+            raise typer.Exit(1)
+        path = detected
+    else:
+        path = Path(file)
+
     if not path.exists():
         console.print(f"[red]File not found:[/red] [bold]{file}[/]")
         raise typer.Exit(1)
