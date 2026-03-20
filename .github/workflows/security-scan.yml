@@ -149,12 +149,12 @@ jobs:
           python-version: "3.11"
 
       - name: Audit server dependencies
-        uses: pypa/gh-action-pip-audit@v1
+        uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: server/requirements.txt
 
       - name: Audit dev dependencies
-        uses: pypa/gh-action-pip-audit@v1
+        uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           inputs: requirements-dev.txt
 
