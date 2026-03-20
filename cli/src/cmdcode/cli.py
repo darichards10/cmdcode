@@ -10,6 +10,7 @@ from pathlib import Path
 import requests
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.backends import default_backend
 
 __version__ = "0.1.0"
 
@@ -22,7 +23,7 @@ app = typer.Typer(
 )
 
 console = Console()
-SERVER_URL = "http://98.81.154.236:8000"  # temp home
+SERVER_URL = "http://3.88.172.28:8000"  # temp home
 
 
 def get_cmdcode_dir() -> Path:
@@ -70,7 +71,8 @@ def get_auth_token(server_url: str = SERVER_URL) -> str:
     nonce = data["nonce"]
 
     private_key = serialization.load_pem_private_key(
-        private_key_file.read_bytes(), password=None
+        private_key_file.read_bytes(), password=None,
+        backend=default_backend()
     )
     signature = private_key.sign(bytes.fromhex(nonce))
     signature_b64 = base64.b64encode(signature).decode()
