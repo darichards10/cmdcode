@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import typer
 from datetime import datetime, timezone
 from rich.console import Console
@@ -25,7 +26,7 @@ app = typer.Typer(
 )
 
 console = Console()
-SERVER_URL = "http://3.88.172.28:8000"  # temp home
+SERVER_URL = os.environ.get("CMDCODE_SERVER_URL", "http://localhost:8000")
 
 
 def get_cmdcode_dir() -> Path:
