@@ -17,7 +17,7 @@ services:
       - JUDGE0_URL=${JUDGE0_URL}
       - APP_PORT=${APP_PORT}
       - DATABASE_URL=sqlite:////data/cmdcode.db
-      - CORS_ORIGINS=http://localhost:3000,http://cmdcode-frontend:3000
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://cmdcode-frontend:3000}
     networks:
       - judge-net
 

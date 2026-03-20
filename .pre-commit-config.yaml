@@ -1,0 +1,32 @@
+repos:
+  # Detect secrets before they are committed
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        name: Detect secrets (gitleaks)
+
+  # General hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: detect-private-key
+        name: Detect private keys
+      - id: check-added-large-files
+        name: Block large file commits
+        args: ["--maxkb=500"]
+      - id: check-merge-conflict
+        name: Check for merge conflict markers
+      - id: end-of-file-fixer
+        name: Fix end of files
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+
+  # Python security linting (bandit)
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        name: Python security lint (bandit)
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]

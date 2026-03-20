@@ -1,0 +1,9 @@
+# Root pyproject.toml — used for tooling configuration only.
+# CLI packaging is in cli/pyproject.toml.
+
+[tool.bandit]
+# Scan server and cli source; exclude tests and virtual envs
+targets = ["server", "cli/src"]
+exclude_dirs = ["tests", ".venv", "venv"]
+# Skip low-severity / noisy rules
+skips = ["B101"]  # assert statements are fine in non-security code
