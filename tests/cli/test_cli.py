@@ -466,3 +466,184 @@ class TestGetAuthToken:
         from cmdcode.cli import get_auth_token
         with pytest.raises((SystemExit, click.exceptions.Exit)):
             get_auth_token("http://localhost")
+
+
+# ---------------------------------------------------------------------------
+# stats command
+# ---------------------------------------------------------------------------
+
+def _stats_payload(**kwargs):
+    defaults = {
+        "username": "alice",
+        "total_submissions": 10,
+        "accepted_submissions": 7,
+        "unique_problems_solved": 5,
+        "accuracy_rate": 70.0,
+        "favorite_language": ".cpp",
+        "rank": 3,
+    }
+    defaults.update(kwargs)
+    return defaults
+
+
+def _write_config(tmp_path, username="alice"):
+    d = tmp_path / ".cmdcode"
+    d.mkdir(exist_ok=True)
+    (d / "config.json").write_text(json.dumps({
+        "username": username,
+        "email": f"{username}@example.com",
+        "server_url": "http://localhost:8000",
+    }))
+
+
+class TestStats:
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_stats_shows_table(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_stats_payload())
+        result = runner.invoke(app, ["stats"])
+        assert result.exit_code == 0
+        assert "5" in result.output  # unique_problems_solved
+        assert "70.0%" in result.output
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_stats_shows_rank(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_stats_payload(rank=2))
+        result = runner.invoke(app, ["stats"])
+        assert "#2" in result.output
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_stats_no_rank_shows_dash(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_stats_payload(rank=None))
+        result = runner.invoke(app, ["stats"])
+        assert result.exit_code == 0
+        assert "—" in result.output
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_stats_request_error_exits(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        import requests as req
+        mock_get.side_effect = req.RequestException("timeout")
+        result = runner.invoke(app, ["stats"])
+        assert result.exit_code != 0
+
+    def test_stats_not_registered_exits(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        result = runner.invoke(app, ["stats"])
+        assert result.exit_code != 0
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_stats_passes_auth_header(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_stats_payload())
+        runner.invoke(app, ["stats"])
+        headers = mock_get.call_args[1].get("headers", {})
+        assert headers.get("Authorization") == f"Bearer {FAKE_TOKEN}"
+
+
+# ---------------------------------------------------------------------------
+# history command
+# ---------------------------------------------------------------------------
+
+def _history_payload(n=3):
+    return [
+        {
+            "submission_id": i + 1,
+            "problem_id": i + 1,
+            "problem_title": f"Problem {i + 1}",
+            "language": ".cpp",
+            "verdict": "Accepted" if i % 2 == 0 else "Wrong Answer",
+            "submitted_at": "2025-01-01 00:00:00Z",
+            "size_bytes": 100,
+        }
+        for i in range(n)
+    ]
+
+
+class TestHistory:
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_history_shows_table(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_history_payload(3))
+        result = runner.invoke(app, ["history"])
+        assert result.exit_code == 0
+        assert "Problem 1" in result.output
+        assert "Accepted" in result.output
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_history_shows_wrong_answer(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_history_payload(2))
+        result = runner.invoke(app, ["history"])
+        assert "Wrong Answer" in result.output
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_history_empty_shows_message(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get([])
+        result = runner.invoke(app, ["history"])
+        assert result.exit_code == 0
+        assert "no submissions" in result.output.lower()
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_history_limit_flag_sent_to_server(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_history_payload(5))
+        runner.invoke(app, ["history", "--limit", "5"])
+        params = mock_get.call_args[1].get("params", {})
+        assert params.get("limit") == 5
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_history_request_error_exits(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        import requests as req
+        mock_get.side_effect = req.RequestException("timeout")
+        result = runner.invoke(app, ["history"])
+        assert result.exit_code != 0
+
+    def test_history_not_registered_exits(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        result = runner.invoke(app, ["history"])
+        assert result.exit_code != 0
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_history_passes_auth_header(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_history_payload(1))
+        runner.invoke(app, ["history"])
+        headers = mock_get.call_args[1].get("headers", {})
+        assert headers.get("Authorization") == f"Bearer {FAKE_TOKEN}"
+
+    @patch("cmdcode.cli.get_auth_token", return_value=FAKE_TOKEN)
+    @patch("cmdcode.cli.requests.get")
+    def test_history_short_flag_n(self, mock_get, mock_auth, tmp_path, monkeypatch):
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        _write_config(tmp_path)
+        mock_get.return_value = _mock_get(_history_payload(10))
+        runner.invoke(app, ["history", "-n", "10"])
+        params = mock_get.call_args[1].get("params", {})
+        assert params.get("limit") == 10

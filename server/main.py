@@ -327,6 +327,92 @@ def root():
 # Public API endpoints (no token required)
 # ---------------------------------------------------------------------------
 
+@app.get("/users/{username}/stats")
+def user_stats(
+    username: str,
+    current_user: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Return submission statistics for the authenticated user."""
+    if username != current_user:
+        raise HTTPException(status_code=403, detail="Cannot view another user's stats")
+
+    submissions = db.query(DBSubmission).filter(DBSubmission.username == username).all()
+    total = len(submissions)
+    accepted = sum(1 for s in submissions if s.passed)
+    unique_solved = db.query(func.count(func.distinct(DBSubmission.problem_id))).filter(
+        DBSubmission.username == username,
+        DBSubmission.passed == True,
+    ).scalar() or 0
+
+    accuracy = round(accepted / total * 100, 1) if total > 0 else 0.0
+
+    from collections import Counter
+    lang_counts = Counter(s.language for s in submissions)
+    favorite_language = lang_counts.most_common(1)[0][0] if lang_counts else None
+
+    leaderboard = (
+        db.query(
+            DBSubmission.username,
+            func.count(func.distinct(DBSubmission.problem_id)).label("solved"),
+        )
+        .filter(DBSubmission.passed == True)
+        .group_by(DBSubmission.username)
+        .order_by(func.count(func.distinct(DBSubmission.problem_id)).desc())
+        .all()
+    )
+    rank = next((i + 1 for i, r in enumerate(leaderboard) if r.username == username), None)
+
+    return {
+        "username": username,
+        "total_submissions": total,
+        "accepted_submissions": accepted,
+        "unique_problems_solved": unique_solved,
+        "accuracy_rate": accuracy,
+        "favorite_language": favorite_language,
+        "rank": rank,
+    }
+
+
+@app.get("/users/{username}/history")
+def user_history(
+    username: str,
+    limit: int = 20,
+    current_user: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Return recent submission history for the authenticated user."""
+    if username != current_user:
+        raise HTTPException(status_code=403, detail="Cannot view another user's history")
+
+    limit = min(max(limit, 1), 100)
+
+    rows = (
+        db.query(DBSubmission)
+        .filter(DBSubmission.username == username)
+        .order_by(DBSubmission.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+    problem_cache: dict[int, DBProblem] = {}
+    result = []
+    for s in rows:
+        if s.problem_id not in problem_cache:
+            problem_cache[s.problem_id] = db.query(DBProblem).filter(DBProblem.id == s.problem_id).first()
+        problem = problem_cache[s.problem_id]
+        result.append({
+            "submission_id": s.id,
+            "problem_id": s.problem_id,
+            "problem_title": problem.title if problem else f"Problem #{s.problem_id}",
+            "language": s.language,
+            "verdict": "Accepted" if s.passed else "Wrong Answer",
+            "submitted_at": s.submitted_at,
+            "size_bytes": s.size_bytes,
+        })
+    return result
+
+
 @app.get("/api/leaderboard")
 def api_leaderboard(db: Session = Depends(get_db)):
     """Return users ranked by number of unique problems solved (accepted)."""
