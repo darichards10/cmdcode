@@ -4,10 +4,14 @@ Test DB setup for server tests.
 Uses an in-memory SQLite database. Tables are created and seeded before each
 test and dropped after, ensuring full isolation between tests.
 """
+import os
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+
+# Must be set before main is imported so the startup check passes
+os.environ.setdefault("SECRET_KEY", "test-secret-key-not-for-production")
 
 from database import Base, get_db
 import main

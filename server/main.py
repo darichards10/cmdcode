@@ -2,6 +2,7 @@
 import asyncio
 import base64
 import hashlib
+import hmac as hmaclib
 import json
 import logging
 import math
@@ -31,6 +32,33 @@ from models import DBChallenge, DBProblem, DBRateLimit, DBRecoveryCode, DBSessio
 logger = logging.getLogger("cmdcode")
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# Server secret — required in all environments.
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+# ---------------------------------------------------------------------------
+
+SECRET_KEY = os.environ.get("SECRET_KEY", "")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
+
+def _sign_token(raw_token: str) -> str:
+    """Return raw_token.HMAC so tokens are cryptographically bound to SECRET_KEY."""
+    mac = hmaclib.new(SECRET_KEY.encode(), raw_token.encode(), hashlib.sha256).hexdigest()
+    return f"{raw_token}.{mac}"
+
+def _verify_token_signature(token: str) -> str | None:
+    """Return the raw token if the HMAC suffix is valid, else None."""
+    if "." not in token:
+        return None
+    raw, mac = token.rsplit(".", 1)
+    expected = hmaclib.new(SECRET_KEY.encode(), raw.encode(), hashlib.sha256).hexdigest()
+    if not hmaclib.compare_digest(expected, mac):
+        return None
+    return raw
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +340,8 @@ def require_auth(
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required")
     token = authorization.removeprefix("Bearer ").strip()
+    if _verify_token_signature(token) is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     session = db.query(DBSession).filter(DBSession.token == token).first()
     if not session:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -553,7 +583,8 @@ def auth_verify(req: VerifyRequest, db: Session = Depends(get_db)):
     # Consume challenge to prevent replay
     db.delete(challenge)
 
-    token = secrets.token_hex(32)
+    raw_token = secrets.token_hex(32)
+    token = _sign_token(raw_token)
     expires_at = datetime.now(timezone.utc) + timedelta(hours=24)
     db.add(DBSession(
         token=token,
