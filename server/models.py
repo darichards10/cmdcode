@@ -61,5 +61,15 @@ class DBRateLimit(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(20), ForeignKey("users.username"), nullable=False, index=True)
-    action = Column(String, nullable=False)       # "submit", "challenge", "verify_fail"
+    action = Column(String, nullable=False)       # "submit", "challenge", "verify_fail", "recover_attempt"
     timestamp = Column(String, nullable=False)     # ISO-8601 string
+
+
+class DBRecoveryCode(Base):
+    __tablename__ = "recovery_codes"
+
+    id = Column(String(36), primary_key=True)           # UUID
+    username = Column(String(20), ForeignKey("users.username"), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False)       # SHA-256 hex digest of the plaintext code
+    used = Column(Boolean, nullable=False, default=False)
+    created_at = Column(String, nullable=False)          # ISO-8601 string

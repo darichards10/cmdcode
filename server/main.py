@@ -1,6 +1,7 @@
 # server/main.py
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import math
@@ -25,7 +26,7 @@ from cryptography.exceptions import InvalidSignature
 
 from contextlib import asynccontextmanager
 from database import Base, engine, get_db
-from models import DBChallenge, DBProblem, DBRateLimit, DBSession, DBSubmission, DBUser
+from models import DBChallenge, DBProblem, DBRateLimit, DBRecoveryCode, DBSession, DBSubmission, DBUser
 
 logger = logging.getLogger("cmdcode")
 
@@ -47,6 +48,10 @@ VERIFY_FAIL_LIMIT = 5             # max failed verifications per username
 VERIFY_FAIL_WINDOW = 900          # 15-minute window
 
 MAX_UPLOAD_BYTES = 1_048_576       # 1 MB file upload limit
+
+RECOVER_RATE_LIMIT = 3             # max recovery attempts per username per hour
+RECOVER_RATE_WINDOW = 3600         # 1-hour window
+RECOVERY_CODE_COUNT = 8            # number of one-time recovery codes issued per generation
 
 # In-memory IP-based registration limiter
 _register_ip_counts: Dict[str, list] = defaultdict(list)
@@ -130,6 +135,11 @@ class VerifyRequest(BaseModel):
     username: str
     challenge_id: str
     signature: str
+
+class RecoverRequest(BaseModel):
+    username: str
+    recovery_code: str
+    new_public_key: str
 
 
 # ---------------------------------------------------------------------------
@@ -552,6 +562,106 @@ def auth_verify(req: VerifyRequest, db: Session = Depends(get_db)):
     ))
     db.commit()
     return {"token": token, "expires_at": expires_at.isoformat()}
+
+
+# ---------------------------------------------------------------------------
+# Recovery endpoints
+# ---------------------------------------------------------------------------
+
+def _make_recovery_code() -> str:
+    """Generate a human-readable recovery code in XXXXXX-XXXXXX-XXXXXX format."""
+    raw = secrets.token_hex(9).upper()  # 18 uppercase hex chars (72 bits of entropy)
+    return f"{raw[:6]}-{raw[6:12]}-{raw[12:]}"
+
+
+def _hash_recovery_code(code: str) -> str:
+    return hashlib.sha256(code.encode()).hexdigest()
+
+
+@app.post("/auth/recovery-codes", status_code=201)
+def auth_generate_recovery_codes(
+    username: str = Depends(require_auth),
+    db: Session = Depends(get_db),
+):
+    """Generate a fresh set of recovery codes. All previous unused codes are invalidated."""
+    # Invalidate all existing codes for this user
+    db.query(DBRecoveryCode).filter(DBRecoveryCode.username == username).delete()
+
+    plaintext_codes = []
+    now = datetime.now(timezone.utc).isoformat()
+    for _ in range(RECOVERY_CODE_COUNT):
+        code = _make_recovery_code()
+        plaintext_codes.append(code)
+        db.add(DBRecoveryCode(
+            id=str(uuid.uuid4()),
+            username=username,
+            code_hash=_hash_recovery_code(code),
+            used=False,
+            created_at=now,
+        ))
+    db.commit()
+
+    return {
+        "codes": plaintext_codes,
+        "warning": (
+            "SAVE THESE CODES NOW — they will not be shown again. "
+            "Store them somewhere safe and outside ~/.cmdcode/ "
+            "(e.g. a password manager, printed paper, or encrypted USB drive)."
+        ),
+    }
+
+
+@app.post("/auth/recover")
+def auth_recover(req: RecoverRequest, db: Session = Depends(get_db)):
+    """Replace a user's public key using a valid one-time recovery code."""
+    # Rate-limit recovery attempts per username to prevent brute force
+    recent_attempts = _count_recent_actions(db, req.username, "recover_attempt", RECOVER_RATE_WINDOW)
+    if recent_attempts >= RECOVER_RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many recovery attempts. Try again in an hour.",
+        )
+    _record_action(db, req.username, "recover_attempt")
+
+    user = db.query(DBUser).filter(DBUser.username == req.username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Validate the new public key before touching anything
+    try:
+        pub_key = serialization.load_pem_public_key(req.new_public_key.encode())
+        if not isinstance(pub_key, Ed25519PublicKey):
+            raise ValueError("Not Ed25519")
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid Ed25519 public key")
+
+    # Normalise the submitted code and look it up
+    submitted_hash = _hash_recovery_code(req.recovery_code.strip().upper())
+    recovery_code = db.query(DBRecoveryCode).filter(
+        DBRecoveryCode.username == req.username,
+        DBRecoveryCode.code_hash == submitted_hash,
+        DBRecoveryCode.used == False,
+    ).first()
+
+    if not recovery_code:
+        raise HTTPException(status_code=401, detail="Invalid or already-used recovery code")
+
+    # Mark code as consumed
+    recovery_code.used = True
+
+    # Rotate the public key
+    user.public_key_pem = req.new_public_key
+
+    # Invalidate all active sessions so the old key can't be used via cached tokens
+    db.query(DBSession).filter(DBSession.username == req.username).delete()
+
+    db.commit()
+
+    return {
+        "message": "Key updated successfully",
+        "username": user.username,
+        "email": user.email,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -175,7 +175,7 @@ cmdcode submit 3
 
 ## Configuration
 
-The CLI connects to a hosted server by default (`http://98.81.154.236:8000`). No configuration is required to use the hosted version.
+The CLI connects to a hosted server by default. No configuration is required to use the hosted version.
 
 If you're self-hosting the server, set the `SERVER_URL` environment variable:
 
