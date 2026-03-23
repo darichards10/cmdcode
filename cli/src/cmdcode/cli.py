@@ -321,6 +321,96 @@ def list():
 
 
 @app.command()
+def stats():
+    """Show your submission statistics."""
+    d = get_cmdcode_dir()
+    config_file = d / "config.json"
+    if not config_file.exists():
+        console.print("[yellow]Not registered. Run: cmdcode register[/yellow]")
+        raise typer.Exit(1)
+    config = json.loads(config_file.read_text())
+    username = config["username"]
+
+    try:
+        token = get_auth_token()
+        resp = requests.get(
+            f"{SERVER_URL}/users/{username}/stats",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException as e:
+        console.print(f"[red]Could not fetch stats:[/red] {e}")
+        raise typer.Exit(1)
+
+    table = Table(title=f"Stats — {username}", border_style="cyan")
+    table.add_column("Metric", style="bold")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Problems Solved", str(data["unique_problems_solved"]))
+    table.add_row("Total Submissions", str(data["total_submissions"]))
+    table.add_row("Accepted", str(data["accepted_submissions"]))
+    table.add_row("Accuracy", f"{data['accuracy_rate']}%")
+    table.add_row("Favorite Language", data.get("favorite_language") or "—")
+    table.add_row("Leaderboard Rank", f"#{data['rank']}" if data.get("rank") else "—")
+
+    console.print(table)
+
+
+@app.command()
+def history(
+    limit: int = typer.Option(20, "--limit", "-n", help="Number of recent submissions to show (max 100)"),
+):
+    """Show your recent submission history."""
+    d = get_cmdcode_dir()
+    config_file = d / "config.json"
+    if not config_file.exists():
+        console.print("[yellow]Not registered. Run: cmdcode register[/yellow]")
+        raise typer.Exit(1)
+    config = json.loads(config_file.read_text())
+    username = config["username"]
+
+    try:
+        token = get_auth_token()
+        resp = requests.get(
+            f"{SERVER_URL}/users/{username}/history",
+            params={"limit": limit},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        submissions = resp.json()
+    except requests.RequestException as e:
+        console.print(f"[red]Could not fetch history:[/red] {e}")
+        raise typer.Exit(1)
+
+    if not submissions:
+        console.print("[yellow]No submissions yet. Try: cmdcode submit <PROBLEM_ID>[/yellow]")
+        return
+
+    table = Table(title=f"Submission History — {username}", border_style="blue")
+    table.add_column("ID", style="dim")
+    table.add_column("Problem")
+    table.add_column("Language")
+    table.add_column("Verdict")
+    table.add_column("Submitted", style="dim")
+
+    for s in submissions:
+        verdict = s["verdict"]
+        color = "bright_green" if verdict == "Accepted" else "red"
+        table.add_row(
+            str(s["submission_id"]),
+            f"#{s['problem_id']} {s['problem_title']}",
+            s["language"],
+            f"[{color}]{verdict}[/]",
+            s["submitted_at"],
+        )
+
+    console.print(table)
+
+
+@app.command()
 def version():
     """Show cmdcode version."""
     console.print(f"[bold cyan]cmdcode[/] version [green]v{__version__}[/]")

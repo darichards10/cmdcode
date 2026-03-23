@@ -675,3 +675,141 @@ class TestSecurityHeaders:
     def test_root_has_cache_control(self):
         resp = client.get("/")
         assert resp.headers.get("cache-control") == "no-store"
+
+
+# ---------------------------------------------------------------------------
+# GET /users/{username}/stats
+# ---------------------------------------------------------------------------
+
+def _add_submission(db, username, problem_id, passed, language=".cpp"):
+    from models import DBSubmission
+    db.add(DBSubmission(
+        problem_id=problem_id, username=username, filename=f"s{language}",
+        code="x", language=language, submitted_at="2025-01-01T00:00:00Z",
+        size_bytes=1, status="Accepted" if passed else "Wrong", passed=passed, results=[],
+    ))
+    db.commit()
+
+
+class TestUserStats:
+    def test_stats_returns_200_for_own_user(self):
+        resp = client.get("/users/testuser/stats")
+        assert resp.status_code == 200
+
+    def test_stats_zero_when_no_submissions(self):
+        data = client.get("/users/testuser/stats").json()
+        assert data["total_submissions"] == 0
+        assert data["accepted_submissions"] == 0
+        assert data["unique_problems_solved"] == 0
+        assert data["accuracy_rate"] == 0.0
+        assert data["favorite_language"] is None
+        assert data["rank"] is None
+
+    def test_stats_counts_submissions(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=True)
+        _add_submission(db_session, "testuser", 1, passed=False)
+        data = client.get("/users/testuser/stats").json()
+        assert data["total_submissions"] == 2
+        assert data["accepted_submissions"] == 1
+
+    def test_stats_counts_unique_problems_solved(self, db_session):
+        # Same problem solved twice still counts as 1
+        _add_submission(db_session, "testuser", 1, passed=True)
+        _add_submission(db_session, "testuser", 1, passed=True)
+        _add_submission(db_session, "testuser", 2, passed=True)
+        data = client.get("/users/testuser/stats").json()
+        assert data["unique_problems_solved"] == 2
+
+    def test_stats_accuracy_rate(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=True)
+        _add_submission(db_session, "testuser", 2, passed=False)
+        data = client.get("/users/testuser/stats").json()
+        assert data["accuracy_rate"] == 50.0
+
+    def test_stats_favorite_language(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=True, language=".py")
+        _add_submission(db_session, "testuser", 2, passed=True, language=".py")
+        _add_submission(db_session, "testuser", 3, passed=True, language=".cpp")
+        data = client.get("/users/testuser/stats").json()
+        assert data["favorite_language"] == ".py"
+
+    def test_stats_rank_assigned(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=True)
+        data = client.get("/users/testuser/stats").json()
+        assert data["rank"] == 1
+
+    def test_stats_forbidden_for_other_user(self):
+        resp = client.get("/users/otheruser/stats")
+        assert resp.status_code == 403
+
+    def test_stats_requires_auth(self):
+        app.dependency_overrides.pop(require_auth, None)
+        try:
+            resp = client.get("/users/testuser/stats")
+            assert resp.status_code == 401
+        finally:
+            app.dependency_overrides[require_auth] = lambda: "testuser"
+
+
+# ---------------------------------------------------------------------------
+# GET /users/{username}/history
+# ---------------------------------------------------------------------------
+
+class TestUserHistory:
+    def test_history_returns_200(self):
+        resp = client.get("/users/testuser/history")
+        assert resp.status_code == 200
+
+    def test_history_empty_when_no_submissions(self):
+        data = client.get("/users/testuser/history").json()
+        assert data == []
+
+    def test_history_returns_submissions(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=True)
+        data = client.get("/users/testuser/history").json()
+        assert len(data) == 1
+        entry = data[0]
+        assert entry["problem_id"] == 1
+        assert entry["verdict"] == "Accepted"
+        assert entry["language"] == ".cpp"
+        assert "submission_id" in entry
+        assert "submitted_at" in entry
+        assert "size_bytes" in entry
+
+    def test_history_wrong_answer_verdict(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=False)
+        data = client.get("/users/testuser/history").json()
+        assert data[0]["verdict"] == "Wrong Answer"
+
+    def test_history_includes_problem_title(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=True)
+        data = client.get("/users/testuser/history").json()
+        assert data[0]["problem_title"] == "Hello World"
+
+    def test_history_ordered_most_recent_first(self, db_session):
+        _add_submission(db_session, "testuser", 1, passed=True)
+        _add_submission(db_session, "testuser", 2, passed=False)
+        data = client.get("/users/testuser/history").json()
+        assert data[0]["submission_id"] > data[1]["submission_id"]
+
+    def test_history_limit_param(self, db_session):
+        for pid in range(1, 6):
+            _add_submission(db_session, "testuser", pid, passed=True)
+        data = client.get("/users/testuser/history?limit=3").json()
+        assert len(data) == 3
+
+    def test_history_limit_capped_at_100(self, db_session):
+        resp = client.get("/users/testuser/history?limit=9999")
+        assert resp.status_code == 200
+
+    def test_history_forbidden_for_other_user(self):
+        resp = client.get("/users/otheruser/history")
+        assert resp.status_code == 403
+
+    def test_history_requires_auth(self):
+        app.dependency_overrides.pop(require_auth, None)
+        try:
+            resp = client.get("/users/testuser/history")
+            assert resp.status_code == 401
+        finally:
+            app.dependency_overrides[require_auth] = lambda: "testuser"
