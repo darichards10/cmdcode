@@ -156,6 +156,16 @@ def register(
     console.print(f"   Keys saved to [dim]~/.cmdcode/[/dim]")
     console.print(f"   [dim]~/.cmdcode/id_ed25519[/dim]     private key")
     console.print(f"   [dim]~/.cmdcode/id_ed25519.pub[/dim] public key")
+    console.print()
+    console.print(Panel(
+        "[bold yellow]Back up your account now![/bold yellow]\n\n"
+        "If you ever lose [dim]~/.cmdcode/id_ed25519[/dim] you will be locked out.\n"
+        "Generate recovery codes and store them somewhere safe:\n\n"
+        "  [bold cyan]cmdcode recovery-codes[/bold cyan]",
+        title="[bold yellow]⚠  Next Step: Save Recovery Codes[/bold yellow]",
+        border_style="yellow",
+        padding=(1, 2),
+    ))
 
 
 @app.command()
@@ -408,6 +418,180 @@ def history(
         )
 
     console.print(table)
+
+
+@app.command(name="recovery-codes")
+def recovery_codes():
+    """Generate a new set of one-time recovery codes for your account."""
+    token = get_auth_token()
+    try:
+        resp = requests.post(
+            f"{SERVER_URL}/auth/recovery-codes",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            pass
+        console.print(f"[red]Failed to generate recovery codes:[/red] {detail or e}")
+        raise typer.Exit(1)
+    except requests.RequestException as e:
+        console.print(f"[red]Could not reach server:[/red] {e}")
+        raise typer.Exit(1)
+
+    codes = data["codes"]
+
+    # ── Safety warning panel ────────────────────────────────────────────────
+    console.print()
+    console.print(Panel(
+        "[bold yellow]IMPORTANT — READ BEFORE CONTINUING[/bold yellow]\n\n"
+        "These codes let you reset your login key if you ever lose it.\n"
+        "[bold red]Each code can only be used once.[/bold red] "
+        "Generating new codes invalidates all previous ones.\n\n"
+        "[bold white]WHERE TO STORE THEM (pick at least one):[/bold white]\n"
+        "  [green]✓[/green]  Password manager (1Password, Bitwarden, KeePass, etc.)\n"
+        "  [green]✓[/green]  Printed on paper, kept in a safe or drawer\n"
+        "  [green]✓[/green]  Encrypted USB drive or external storage\n"
+        "  [green]✓[/green]  Secure cloud notes (Notion, encrypted Apple Notes, etc.)\n\n"
+        "[bold red]✗  Do NOT save them inside ~/.cmdcode/[/bold red]\n"
+        "   That folder holds your key — if it is lost, so are codes stored there.\n\n"
+        "[bold red]✗  Do NOT screenshot them on an untrusted device[/bold red]",
+        title="[bold red]⚠  RECOVERY CODES — SAVE THESE NOW[/bold red]",
+        border_style="red",
+        padding=(1, 2),
+    ))
+
+    # ── Display the codes ────────────────────────────────────────────────────
+    console.print()
+    console.print("[bold white]Your recovery codes:[/bold white]")
+    console.print()
+    for i, code in enumerate(codes, 1):
+        console.print(f"  [bold cyan]{i:>2}.[/bold cyan]  [bold yellow]{code}[/bold yellow]")
+    console.print()
+    console.print("[dim]These codes will NOT be shown again.[/dim]")
+    console.print()
+
+    # ── Offer to save to file ────────────────────────────────────────────────
+    save = typer.confirm("Save codes to a file now?", default=True)
+    if save:
+        default_path = Path.home() / "cmdcode-recovery-codes.txt"
+        raw = typer.prompt("Save to", default=str(default_path))
+        out = Path(raw).expanduser()
+        d = get_cmdcode_dir()
+        config = {}
+        cfg = d / "config.json"
+        if cfg.exists():
+            config = json.loads(cfg.read_text())
+        username = config.get("username", "unknown")
+        lines = [
+            "cmdcode recovery codes",
+            f"Username: {username}",
+            f"Generated: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            "",
+            "IMPORTANT:",
+            "  - Each code can only be used once.",
+            "  - Keep this file outside ~/.cmdcode/ — that folder may be lost with your key.",
+            "  - Store in a password manager or other secure location.",
+            "",
+        ] + [f"  {code}" for code in codes] + [
+            "",
+            "To recover your account: cmdcode recover",
+        ]
+        out.write_text("\n".join(lines) + "\n")
+        out.chmod(0o600)
+        console.print(f"\n[green]Saved to[/green] [cyan]{out}[/cyan]")
+        console.print("[yellow]Move this file to a safe location that is NOT inside ~/.cmdcode/[/yellow]")
+
+
+@app.command()
+def recover():
+    """Recover your account using a backup recovery code and a new keypair."""
+    console.print()
+    console.print(Panel(
+        "This will generate a new key pair for your account.\n"
+        "Your [bold]username and email are preserved[/bold] — only the key changes.\n\n"
+        "You will need one of the recovery codes you saved when you ran\n"
+        "[bold cyan]cmdcode recovery-codes[/bold cyan].",
+        title="[bold cyan]Account Recovery[/bold cyan]",
+        border_style="cyan",
+        padding=(1, 2),
+    ))
+    console.print()
+
+    username = typer.prompt("Username")
+    recovery_code = typer.prompt("Recovery code (format: XXXXXX-XXXXXX-XXXXXX)")
+
+    # Generate a brand-new Ed25519 keypair
+    console.print("\n[dim]Generating new keypair...[/dim]")
+    private_key = Ed25519PrivateKey.generate()
+    private_pem = private_key.private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    public_pem = private_key.public_key().public_bytes(
+        serialization.Encoding.PEM,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    try:
+        resp = requests.post(
+            f"{SERVER_URL}/auth/recover",
+            json={
+                "username": username,
+                "recovery_code": recovery_code.strip().upper(),
+                "new_public_key": public_pem.decode(),
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+    except requests.HTTPError as e:
+        detail = ""
+        try:
+            detail = e.response.json().get("detail", "")
+        except Exception:
+            pass
+        console.print(f"\n[red]Recovery failed:[/red] {detail or e}")
+        raise typer.Exit(1)
+    except requests.RequestException as e:
+        console.print(f"\n[red]Could not reach server:[/red] {e}")
+        raise typer.Exit(1)
+
+    # Persist the new keypair and config
+    d = get_cmdcode_dir()
+    key_file = d / "id_ed25519"
+    key_file.write_bytes(private_pem)
+    key_file.chmod(0o600)
+    (d / "id_ed25519.pub").write_bytes(public_pem)
+    (d / "config.json").write_text(json.dumps({
+        "username": result["username"],
+        "email": result["email"],
+        "server_url": SERVER_URL,
+    }))
+    # Clear any stale session token
+    session_file = d / "session.json"
+    if session_file.exists():
+        session_file.unlink()
+
+    console.print()
+    console.print(Panel(
+        f"[bold green]Recovery successful![/bold green]\n\n"
+        f"[bold white]Username:[/bold white] [cyan]{result['username']}[/cyan]\n"
+        f"[bold white]Email:[/bold white]    {result['email']}\n\n"
+        "Your new key has been saved to [dim]~/.cmdcode/id_ed25519[/dim]\n\n"
+        "[yellow]Remember to generate a new set of recovery codes now\n"
+        "so you have backups for this new key:[/yellow]\n"
+        "  [bold cyan]cmdcode recovery-codes[/bold cyan]",
+        title="[bold green]✓ Recovery Complete[/bold green]",
+        border_style="green",
+        padding=(1, 2),
+    ))
 
 
 @app.command()
