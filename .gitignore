@@ -4,6 +4,10 @@
 # Environment files – root or nested
 **/.env
 
+**/.venv/
+
+**/dist/
+
 **/*.egg-info
 
 **/dist

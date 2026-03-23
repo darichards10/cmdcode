@@ -26,7 +26,7 @@ app = typer.Typer(
 )
 
 console = Console()
-SERVER_URL = os.environ.get("CMDCODE_SERVER_URL", "http://18.212.79.122:8000")
+SERVER_URL = os.environ.get("CMDCODE_SERVER_URL", "http://localhost:8000")
 
 
 def get_cmdcode_dir() -> Path:
