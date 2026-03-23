@@ -195,7 +195,7 @@ cmdcode list
 - [Docker Compose](https://docs.docker.com/compose/install/) v2 (included with Docker Desktop)
 - Linux with **cgroups v1** required for Judge0 workers (see note below)
 
-> **cgroups v1 note:** Judge0's sandbox requires cgroups v1. On modern Ubuntu/Debian systems you can enable it by adding `systemd.unified_cgroup_hierarchy=0` to your kernel boot parameters (edit `/etc/default/grub`, then run `update-grub` and reboot). On WSL2, cgroups v2 is not supported — use a Linux VM instead.
+> **cgroups v1 note:** Judge0's sandbox requires cgroups v1. On modern Ubuntu/Debian systems you can enable it by adding `systemd.unified_cgroup_hierarchy=0` to your kernel boot parameters (edit `/etc/default/grub`, then run `update-grub` and reboot). On WSL2, cgroups v2 is not supported — use a Linux VM instead. To keep it simple, I run Ubuntu-20.04 for this application.
 
 ### 1. Configure Judge0
 
