@@ -69,9 +69,11 @@ async def lifespan(application):
         _sync_problems(db)
     finally:
         db.close()
-    task = asyncio.create_task(_problem_reload_loop())
+    reload_task = asyncio.create_task(_problem_reload_loop())
+    cleanup_task = asyncio.create_task(_db_cleanup_loop())
     yield
-    task.cancel()
+    reload_task.cancel()
+    cleanup_task.cancel()
 
 
 app = FastAPI(title="cmdcode Server", description="Your personal coding judge", lifespan=lifespan)
@@ -217,6 +219,23 @@ async def _problem_reload_loop() -> None:
             db.close()
 
 
+DB_CLEANUP_INTERVAL = int(os.getenv("DB_CLEANUP_INTERVAL", "3600"))  # default: every hour
+
+
+async def _db_cleanup_loop() -> None:
+    """Background task: periodically purge expired/stale DB rows."""
+    while True:
+        await asyncio.sleep(DB_CLEANUP_INTERVAL)
+        db = next(get_db())
+        try:
+            _cleanup_expired_records(db)
+            logger.info("Scheduled DB cleanup complete")
+        except Exception:
+            logger.exception("Error during scheduled DB cleanup")
+        finally:
+            db.close()
+
+
 def _row_to_problem(row: DBProblem) -> Problem:
     return Problem(
         id=row.id,
@@ -288,9 +307,11 @@ def _cleanup_expired_records(db: Session) -> None:
     db.query(DBSession).filter(DBSession.expires_at < now).delete()
     # Clean up old rate-limit entries (older than the longest window)
     cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(
-        SUBMIT_RATE_WINDOW_SECONDS, CHALLENGE_RATE_WINDOW, VERIFY_FAIL_WINDOW
+        SUBMIT_RATE_WINDOW_SECONDS, CHALLENGE_RATE_WINDOW, VERIFY_FAIL_WINDOW, RECOVER_RATE_WINDOW
     ))).isoformat()
     db.query(DBRateLimit).filter(DBRateLimit.timestamp < cutoff).delete()
+    # Clean up used recovery codes — they are one-time use and have no value once consumed
+    db.query(DBRecoveryCode).filter(DBRecoveryCode.used == True).delete()
     db.commit()
 
 
